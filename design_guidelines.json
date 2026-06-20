@@ -1,0 +1,145 @@
+{
+  "app_name": "Freezy Prop Firm Command Center",
+  "personality": "6 Glass / Luxe fused with 7 Dark-First Utility for data density",
+  "personality_one_liner": "A $10,000+ premium prop firm scaling terminal where luxury glassmorphism meets high-density trading operations.",
+  "color": {
+    "surface": "#050505",
+    "onSurface": "#FFFFFF",
+    "surfaceSecondary": "#121214",
+    "onSurfaceSecondary": "#A1A1A8",
+    "surfaceTertiary": "#1A1A1E",
+    "onSurfaceTertiary": "#8A8A93",
+    "surfaceInverse": "#FFFFFF",
+    "onSurfaceInverse": "#000000",
+    "brand": "#00E5FF",
+    "brandPrimary": "#00E5FF",
+    "onBrandPrimary": "#000000",
+    "brandSecondary": "#D4AF37",
+    "onBrandSecondary": "#000000",
+    "brandTertiary": "rgba(0, 229, 255, 0.12)",
+    "onBrandTertiary": "#00E5FF",
+    "success": "#00FF66",
+    "onSuccess": "#003314",
+    "warning": "#FFB020",
+    "onWarning": "#402A00",
+    "error": "#FF4444",
+    "onError": "#330000",
+    "border": "#1E1E24",
+    "borderStrong": "#2A2A35",
+    "divider": "#1A1A1E"
+  },
+  "typography": {
+    "displayFontFamily": "Space Grotesk",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": { "sm": 12, "base": 14, "lg": 16, "xl": 20, "2xl": 24 }
+  },
+  "spacing": { 
+    "rule": "Generous vertical breathing room but tight grouping for data rows. Use padding to create depth instead of just borders.",
+    "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "2xl": 32, "3xl": 48 
+  },
+  "radius_tokens": { "sm": 6, "md": 12, "lg": 20, "pill": 999 },
+  "shadow_tier": "2",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use blur on bottom tabs, sticky headers, and floating FABs.",
+      "Pair glass panels with a translucent tint (≥75% opacity) to ensure readability.",
+      "Apply subtle neon glow (`success` or `brandPrimary`) behind premium featured cards."
+    ],
+    "dont's": [
+      "Never blur body text or dense form regions.",
+      "Avoid stacking more than two blur layers on a single screen."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler",
+    "charts": "react-native-gifted-charts"
+  },
+  "screens": [
+    { 
+      "name": "Home Dashboard", 
+      "purpose": "Command center overview: Cumulative payout progress, Win rate, and active Copy Trading Master status.", 
+      "states": { 
+        "loading": "Dark skeleton loaders pulsing with electric blue tint.", 
+        "empty": "Premium empty state pushing the user to link their first eval account.", 
+        "error": "Soft red warning text with a retry connection button." 
+      },
+      "layout": "Top sticky glass header with User Profile/Level. Hero section: Large Animated Progress Wheel ($50K Goal Tracker) with Gold accents. Grid of 2x2 KPI cards below it (Win Rate, Overall R). Bottom section: Quick roadmap scaling visual (25K -> 50K -> etc.)." 
+    },
+    { 
+      "name": "Account Control Center", 
+      "purpose": "Manage all trading accounts (Evaluations, Funded, Copy Trade Slaves) in a dense, color-coded table.", 
+      "states": { 
+        "loading": "List skeleton loader.", 
+        "empty": "Dark abstract illustration (boxes/grid) saying 'No active accounts connected'.", 
+        "error": "Error fetching account status from broker API." 
+      },
+      "layout": "Sticky filter row (All, Eval, Funded, Blown) using pill tabs. List view of accounts: Premium rounded cards. Profitable accounts have a subtle neon green glow on the card border. Blown accounts use a muted dark panel with a soft red status tag. Live accounts have a pulsing dot indicator." 
+    },
+    { 
+      "name": "Planner", 
+      "purpose": "90-day execution calendar and daily trading checklists.", 
+      "states": { 
+        "loading": "Calendar grid skeleton.", 
+        "empty": "Start your 90-day execution protocol prompt.", 
+        "error": "Could not load planner data." 
+      },
+      "layout": "Horizontal scrollable week/month view at the top. Below: A structured daily checklist (Pre-market prep, Risk limit check, End-of-day review). Completed items trigger a subtle haptic success strike-through." 
+    },
+    { 
+      "name": "Journal & Analytics", 
+      "purpose": "Log trades, upload screenshots, and view performance charts.", 
+      "states": { 
+        "loading": "Chart drawing skeleton.", 
+        "empty": "No trades logged today.", 
+        "error": "Data rendering error." 
+      },
+      "layout": "Two-tab toggle at top (Log Trade | Analytics). Log Trade: Single-column form with screenshot upload area. Analytics: Dark-themed charts (Account Growth Line Chart, R-Distribution Bar Chart). Smooth animated chart loading sequences." 
+    }
+  ],
+  "images": {
+    "login_hero_bg": { 
+      "url": "https://images.pexels.com/photos/9667557/pexels-photo-9667557.jpeg", 
+      "alt": "Abstract dark glowing blue particles for premium fintech login background" 
+    },
+    "chart_abstract": { 
+      "url": "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3", 
+      "alt": "Dark candlestick chart abstract background" 
+    },
+    "badge_gold_elite": { 
+      "url": "https://images.pexels.com/photos/31622917/pexels-photo-31622917.jpeg", 
+      "alt": "Luxury gold abstract lines representing an elite milestone badge" 
+    },
+    "empty_state_tech": { 
+      "url": "https://images.unsplash.com/photo-1554934991-78d3b7b533c6", 
+      "alt": "Black LED light texture for premium dark mode empty states" 
+    }
+  },
+  "haptics": {
+    "tab_press": "light",
+    "checklist_toggle": "medium",
+    "payout_unlock": "success",
+    "card_press": "light",
+    "goal_completion": "heavy"
+  },
+  "instructions_to_main_agent": [
+    "Design specifically for a premium $10,000+ fintech SaaS/Bloomberg Terminal aesthetic. It MUST feel like an elite command center, not a standard consumer app.",
+    "Implement 'Neon Green' (#00FF66) glows via box-shadow or Skia solely around profitable/funded accounts, and 'Soft Red' (#FF4444) for risk/drawdown. This is a trading app; green/red have literal financial meaning.",
+    "For typography, STRICTLY use 'Space Grotesk' for all numbers, metrics, and KPI readouts, and 'Plus Jakarta Sans' for labels and body text.",
+    "Animation Requirements: Use react-native-reanimated for Number Counters on the $50k goal tracker. Add animated entrance for cards (fade and slide up) and a live pulsing dot (scale & opacity loop) on active accounts.",
+    "Backgrounds: Use the provided `login_hero_bg` (glowing particles) behind the main Home dashboard, heavily darkened with a vertical scrim gradient (Layer 2) so text stays legible.",
+    "The 90-Day Planner must feature dense, structured layout cells rather than huge playful bubbles. Precision is key.",
+    "When building the Account Control Center, profitable accounts should have an `active` state glow (shadow color #00FF66 with low opacity/spread), while normal panels stay `surfaceSecondary`."
+  ]
+}
