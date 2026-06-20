@@ -96,18 +96,19 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>{settings?.traderName || "Trader"}</Text>
           </View>
           <Pressable
-            testID="open-goal-btn"
+            testID="open-profile-btn"
             style={styles.iconBtn}
-            onPress={() => router.push("/goal")}
+            onPress={() => router.push("/settings")}
             hitSlop={8}
           >
-            <Ionicons name="trophy" color={colors.gold} size={18} />
+            <Ionicons name="person-circle" color={colors.brand} size={26} />
           </Pressable>
         </View>
 
         {/* Hero: $50K Progress */}
         <Animated.View entering={FadeIn.duration(420)}>
-          <GlassCard glow="gold" style={styles.heroCard} testID="hero-goal-card">
+          <Pressable testID="open-goal-btn" onPress={() => router.push("/goal")}>
+            <GlassCard glow="gold" style={styles.heroCard} testID="hero-goal-card">
             <View style={styles.heroRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.heroLabel}>MISSION TARGET</Text>
@@ -138,6 +139,7 @@ export default function HomeScreen() {
               />
             </View>
           </GlassCard>
+          </Pressable>
         </Animated.View>
 
         {/* Today's Required R Calculator */}

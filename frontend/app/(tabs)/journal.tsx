@@ -23,6 +23,8 @@ export default function JournalScreen() {
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [market, setMarket] = useState("");
   const [setupType, setSetupType] = useState("");
@@ -35,6 +37,7 @@ export default function JournalScreen() {
   const [notes, setNotes] = useState("");
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -77,12 +80,29 @@ export default function JournalScreen() {
   const reset = () => {
     setMarket(""); setSetupType(""); setEntryPrice(""); setSL(""); setTP(""); setRisk("");
     setREarned(""); setResult("win"); setNotes(""); setScreenshot(null);
+    setEditId(null); setConfirmDelete(false);
+  };
+
+  const openEdit = (e: any) => {
+    setEditId(e.id);
+    setMarket(e.market || "");
+    setSetupType(e.setupType || "");
+    setEntryPrice(e.entry ? String(e.entry) : "");
+    setSL(e.stopLoss ? String(e.stopLoss) : "");
+    setTP(e.takeProfit ? String(e.takeProfit) : "");
+    setRisk(e.risk ? String(e.risk) : "");
+    setREarned(e.rEarned !== undefined ? String(e.rEarned) : "");
+    setResult((e.result as any) || "win");
+    setNotes(e.notes || "");
+    setScreenshot(e.screenshotBase64 || null);
+    setConfirmDelete(false);
+    setModalOpen(true);
   };
 
   const submit = async () => {
     setSubmitting(true);
     try {
-      await api.createJournal({
+      const body = {
         market, setupType,
         entry: parseFloat(entryPrice) || 0,
         stopLoss: parseFloat(sl) || 0,
@@ -91,12 +111,29 @@ export default function JournalScreen() {
         rEarned: parseFloat(rEarned) || 0,
         result, notes,
         screenshotBase64: screenshot,
-      });
+      };
+      if (editId) {
+        await api.updateJournal(editId, body);
+      } else {
+        await api.createJournal(body);
+      }
       reset();
       setModalOpen(false);
       load();
     } catch (e) { console.warn(e); }
     finally { setSubmitting(false); }
+  };
+
+  const doDelete = async () => {
+    if (!editId) return;
+    setDeleting(true);
+    try {
+      await api.deleteJournal(editId);
+      reset();
+      setModalOpen(false);
+      load();
+    } catch (e) { console.warn(e); }
+    finally { setDeleting(false); }
   };
 
   return (
@@ -106,7 +143,7 @@ export default function JournalScreen() {
           <Text style={styles.brandLabel}>TRADING JOURNAL</Text>
           <Text style={styles.title}>Journal</Text>
         </View>
-        <Pressable testID="add-trade-btn" style={styles.addBtn} onPress={() => setModalOpen(true)} hitSlop={8}>
+        <Pressable testID="add-trade-btn" style={styles.addBtn} onPress={() => { reset(); setModalOpen(true); }} hitSlop={8}>
           <Ionicons name="add" color="#000" size={22} />
         </Pressable>
       </View>
@@ -129,11 +166,12 @@ export default function JournalScreen() {
                   <Text style={styles.emptySub}>Tap + to log your first trade.</Text>
                 </GlassCard>
               ) : entries.map((e) => (
-                <GlassCard key={e.id} style={styles.entryCard}
+                <Pressable key={e.id} testID={`journal-entry-${e.id}`} onPress={() => openEdit(e)}>
+                <GlassCard style={styles.entryCard}
                   glow={e.result === "win" ? "green" : e.result === "loss" ? "red" : "none"}
                 >
                   <View style={styles.entryTop}>
-                    <View>
+                    <View style={{ flex: 1 }}>
                       <Text style={styles.entryMarket}>{e.market || "—"}</Text>
                       <Text style={styles.entryMeta}>{e.setupType || "Setup"} · {new Date(e.date).toLocaleDateString()}</Text>
                     </View>
@@ -147,7 +185,12 @@ export default function JournalScreen() {
                     <Image source={{ uri: e.screenshotBase64 }} style={styles.thumb} contentFit="cover" />
                   ) : null}
                   {e.notes ? <Text style={styles.entryNotes}>{e.notes}</Text> : null}
+                  <View style={styles.tapHintRow}>
+                    <Ionicons name="create-outline" size={11} color={colors.textDim} />
+                    <Text style={styles.tapHint}>TAP TO EDIT OR DELETE</Text>
+                  </View>
                 </GlassCard>
+                </Pressable>
               ))}
             </>
           ) : (
@@ -156,14 +199,14 @@ export default function JournalScreen() {
         </ScrollView>
       )}
 
-      <Modal visible={modalOpen} transparent animationType="slide" onRequestClose={() => setModalOpen(false)}>
+      <Modal visible={modalOpen} transparent animationType="slide" onRequestClose={() => { reset(); setModalOpen(false); }}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
           <View style={styles.modalOverlay}>
             <View style={styles.sheet}>
               <View style={styles.sheetHandle} />
               <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                <Text style={styles.sheetEyebrow}>LOG TRADE</Text>
-                <Text style={styles.sheetTitle}>New Entry</Text>
+                <Text style={styles.sheetEyebrow}>{editId ? "EDIT TRADE" : "LOG TRADE"}</Text>
+                <Text style={styles.sheetTitle}>{editId ? "Update Entry" : "New Entry"}</Text>
                 <View style={{ height: 16 }} />
                 <Row label="Market">
                   <TextInput testID="trade-market" value={market} onChangeText={setMarket} placeholder="EURUSD" placeholderTextColor={colors.textDim} style={styles.input} />
@@ -210,9 +253,35 @@ export default function JournalScreen() {
                     <PrimaryButton label="Cancel" variant="ghost" onPress={() => { reset(); setModalOpen(false); }} testID="cancel-trade" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <PrimaryButton label="Save Trade" loading={submitting} onPress={submit} testID="save-trade" />
+                    <PrimaryButton label={editId ? "Update" : "Save Trade"} loading={submitting} onPress={submit} testID="save-trade" />
                   </View>
                 </View>
+                {editId ? (
+                  <>
+                    <View style={{ height: 14 }} />
+                    {confirmDelete ? (
+                      <View style={styles.confirmRow}>
+                        <Text style={styles.confirmText}>Delete this entry permanently?</Text>
+                        <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                          <View style={{ flex: 1 }}>
+                            <PrimaryButton label="Keep" variant="ghost" onPress={() => setConfirmDelete(false)} testID="cancel-delete-trade" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <PrimaryButton label="Yes · Delete" variant="danger" loading={deleting} onPress={doDelete} testID="confirm-delete-trade" />
+                          </View>
+                        </View>
+                      </View>
+                    ) : (
+                      <PrimaryButton
+                        label="Delete Entry"
+                        variant="danger"
+                        icon={<Ionicons name="trash" color="#fff" size={16} />}
+                        onPress={() => setConfirmDelete(true)}
+                        testID="delete-trade"
+                      />
+                    )}
+                  </>
+                ) : null}
                 <View style={{ height: 30 }} />
               </ScrollView>
             </View>
@@ -362,4 +431,8 @@ const styles = StyleSheet.create({
   },
   uploaderImg: { width: "100%", height: "100%" },
   uploaderText: { color: colors.textMuted, marginTop: 8, fontSize: 12 },
+  tapHintRow: { flexDirection: "row", alignItems: "center", marginTop: 10, gap: 4 },
+  tapHint: { color: colors.textDim, fontSize: 9, letterSpacing: 1.4, fontWeight: "700" },
+  confirmRow: { padding: 14, backgroundColor: colors.redDim, borderColor: colors.red, borderWidth: 1, borderRadius: radius.md },
+  confirmText: { color: colors.text, fontSize: 13, fontWeight: "600" },
 });

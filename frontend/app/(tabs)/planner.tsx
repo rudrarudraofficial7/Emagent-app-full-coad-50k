@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Modal, TextInput,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { ScreenBackground } from "@/src/components/ScreenBackground";
 import { GlassCard } from "@/src/components/GlassCard";
@@ -35,21 +36,64 @@ const STATUS_BORDER: Record<string, string> = {
   missed: colors.red,
 };
 
+const WEEKDAY_LABEL = ["MON", "TUE", "WED", "THU", "FRI"];
+
+function isToday(iso: string): boolean {
+  try {
+    const d = new Date(iso);
+    const n = new Date();
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  } catch { return false; }
+}
+
+function fmtDay(iso: string): string {
+  try { return String(new Date(iso).getDate()); } catch { return "—"; }
+}
+
+function fmtMonth(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, { month: "short" }).toUpperCase();
+  } catch { return ""; }
+}
+
+function fmtRange(startIso: string, endIso: string): string {
+  try {
+    const s = new Date(startIso);
+    const e = new Date(endIso);
+    const sMon = s.toLocaleString(undefined, { month: "short" });
+    const eMon = e.toLocaleString(undefined, { month: "short" });
+    if (sMon === eMon) return `${sMon} ${s.getDate()} – ${e.getDate()}`;
+    return `${sMon} ${s.getDate()} – ${eMon} ${e.getDate()}`;
+  } catch { return ""; }
+}
+
 export default function PlannerScreen() {
   const insets = useSafeAreaInsets();
-  const [plan, setPlan] = useState<any[]>([]);
+  const [calendar, setCalendar] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any | null>(null);
+  const [expandedWeek, setExpandedWeek] = useState<number | null>(null);
   const [r, setR] = useState("0");
   const [notes, setNotes] = useState("");
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     try {
-      const p = await api.getPlan();
-      setPlan(p);
+      const c = await api.getCalendar();
+      setCalendar(c);
+      // Auto-expand the week containing today (or first incomplete week)
+      if (c?.weeks?.length && expandedWeek === null) {
+        const todayWeek = c.weeks.find((w: any) =>
+          w.days.some((d: any) => isToday(d.date))
+        );
+        const firstActive = c.weeks.find((w: any) =>
+          w.days.some((d: any) => d.status !== "completed")
+        );
+        setExpandedWeek(todayWeek?.weekNumber ?? firstActive?.weekNumber ?? c.weeks[0].weekNumber);
+      }
     } catch (e) { console.warn(e); }
     finally { setLoading(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -76,9 +120,17 @@ export default function PlannerScreen() {
     } catch (e) { console.warn(e); }
   };
 
-  const completed = plan.filter((d) => d.status === "completed").length;
-  const missed = plan.filter((d) => d.status === "missed").length;
-  const inProgress = plan.filter((d) => d.status === "in_progress").length;
+  const summary = useMemo(() => {
+    const days: any[] = calendar?.days ?? [];
+    return {
+      completed: days.filter((d) => d.status === "completed").length,
+      missed: days.filter((d) => d.status === "missed").length,
+      inProgress: days.filter((d) => d.status === "in_progress").length,
+      pending: days.filter((d) => d.status === "pending").length,
+      totalR: Math.round(days.reduce((s, d) => s + (d.rEarned || 0), 0) * 100) / 100,
+      totalTrades: days.reduce((s, d) => s + (d.tradeCount || 0), 0),
+    };
+  }, [calendar]);
 
   return (
     <ScreenBackground>
@@ -89,37 +141,112 @@ export default function PlannerScreen() {
         </View>
       </View>
 
-      {loading ? (
+      {loading || !calendar ? (
         <ActivityIndicator color={colors.brand} style={{ marginTop: 80 }} />
       ) : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 140 }}>
           <View style={{ flexDirection: "row", gap: 10, marginBottom: spacing.lg }}>
-            <SummaryPill label="Completed" value={completed} color={colors.green} />
-            <SummaryPill label="Active" value={inProgress} color={colors.brand} />
-            <SummaryPill label="Pending" value={plan.length - completed - missed - inProgress} color={colors.textMuted} />
-            <SummaryPill label="Missed" value={missed} color={colors.red} />
+            <SummaryPill label="Completed" value={summary.completed} color={colors.green} />
+            <SummaryPill label="Active" value={summary.inProgress} color={colors.brand} />
+            <SummaryPill label="R Earned" value={`${summary.totalR}`} color={colors.gold} />
+            <SummaryPill label="Trades" value={summary.totalTrades} color={colors.textMuted} />
           </View>
 
-          <SectionHeader title="Calendar" />
-          <View style={styles.grid}>
-            {plan.map((d) => {
-              const isCompleted = d.status === "completed";
-              return (
-                <Pressable
-                  key={d.dayNumber}
-                  testID={`day-cell-${d.dayNumber}`}
-                  style={[
-                    styles.cell,
-                    { backgroundColor: STATUS_COLORS[d.status], borderColor: STATUS_BORDER[d.status] },
-                  ]}
-                  onPress={() => openDay(d)}
+          <SectionHeader title="Weekly Calendar · Mon–Fri" />
+
+          {(calendar.weeks || []).map((w: any, idx: number) => {
+            const expanded = expandedWeek === w.weekNumber;
+            const winRate = (w.wins + w.losses) > 0 ? Math.round((w.wins / (w.wins + w.losses)) * 100) : 0;
+            const rDelta = (w.rEarned || 0) - (w.plannedR || 0);
+            const rColor = rDelta >= 0 ? colors.green : colors.red;
+            return (
+              <Animated.View key={w.weekNumber} entering={FadeInDown.delay(idx * 40).duration(360)}>
+                <GlassCard
+                  style={styles.weekCard}
+                  glow={w.completed >= 5 ? "green" : "none"}
+                  testID={`week-card-${w.weekNumber}`}
                 >
-                  <Text style={[styles.cellDay, isCompleted ? { color: colors.green } : null]}>{d.dayNumber}</Text>
-                  <Text style={styles.cellR}>{d.targetR}R</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+                  <Pressable
+                    onPress={() => setExpandedWeek(expanded ? null : w.weekNumber)}
+                    style={styles.weekHeader}
+                    testID={`week-toggle-${w.weekNumber}`}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Text style={styles.weekTitle}>WEEK {w.weekNumber}</Text>
+                        <Text style={styles.weekRange}>· {fmtRange(w.startDate, w.endDate)}</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", marginTop: 10, gap: 14, flexWrap: "wrap" }}>
+                        <MiniMetric label="R EARNED" value={`${w.rEarned}R`} color={rColor} />
+                        <MiniMetric label="TARGET" value={`${w.plannedR}R`} color={colors.textMuted} />
+                        <MiniMetric label="TRADES" value={String(w.tradeCount)} color={colors.brand} />
+                        <MiniMetric label="W/L" value={`${w.wins}/${w.losses}`} color={colors.gold} />
+                        {(w.wins + w.losses) > 0 ? (
+                          <MiniMetric label="WIN%" value={`${winRate}%`} color={colors.green} />
+                        ) : null}
+                      </View>
+                    </View>
+                    <Ionicons
+                      name={expanded ? "chevron-up" : "chevron-down"}
+                      color={colors.textMuted}
+                      size={20}
+                    />
+                  </Pressable>
+
+                  {expanded ? (
+                    <View style={styles.weekBody}>
+                      <View style={styles.dowRow}>
+                        {WEEKDAY_LABEL.map((l) => (
+                          <Text key={l} style={styles.dowLabel}>{l}</Text>
+                        ))}
+                      </View>
+                      <View style={styles.weekGrid}>
+                        {w.days.map((d: any) => {
+                          const today = isToday(d.date);
+                          return (
+                            <Pressable
+                              key={d.dayNumber}
+                              testID={`day-cell-${d.dayNumber}`}
+                              style={[
+                                styles.dayCell,
+                                {
+                                  backgroundColor: STATUS_COLORS[d.status],
+                                  borderColor: today ? colors.brand : STATUS_BORDER[d.status],
+                                  borderWidth: today ? 2 : 1,
+                                },
+                              ]}
+                              onPress={() => openDay(d)}
+                            >
+                              <Text style={styles.dayMonth}>{fmtMonth(d.date)}</Text>
+                              <Text style={[styles.dayDate, d.status === "completed" ? { color: colors.green } : null]}>{fmtDay(d.date)}</Text>
+                              <Text style={styles.dayNum}>D{d.dayNumber}</Text>
+                              {d.tradeCount > 0 ? (
+                                <View style={styles.tradeDot}>
+                                  <Text style={styles.tradeDotText}>{d.tradeCount}</Text>
+                                </View>
+                              ) : null}
+                              {d.rEarned ? (
+                                <Text style={[styles.dayR, d.rEarned > 0 ? { color: colors.green } : { color: colors.red }]}>
+                                  {d.rEarned > 0 ? "+" : ""}{d.rEarned}R
+                                </Text>
+                              ) : (
+                                <Text style={styles.dayTarget}>{d.targetR}R</Text>
+                              )}
+                              {today ? <View style={styles.todayPin} /> : null}
+                            </Pressable>
+                          );
+                        })}
+                        {/* Fill missing trailing cells to align grid */}
+                        {Array.from({ length: Math.max(0, 5 - w.days.length) }).map((_, i) => (
+                          <View key={`pad-${i}`} style={[styles.dayCell, styles.dayCellEmpty]} />
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+                </GlassCard>
+              </Animated.View>
+            );
+          })}
         </ScrollView>
       )}
 
@@ -129,9 +256,18 @@ export default function PlannerScreen() {
             <View style={styles.sheetHandle} />
             {selected ? (
               <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.sheetEyebrow}>DAY {selected.dayNumber} · {new Date(selected.date).toLocaleDateString()}</Text>
+                <Text style={styles.sheetEyebrow}>
+                  DAY {selected.dayNumber} · {new Date(selected.date).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+                </Text>
                 <Text style={styles.sheetTitle}>Today{"\u2019"}s Mission</Text>
-                <Text style={styles.sheetSub}>Target: {selected.targetR}R</Text>
+                <View style={{ flexDirection: "row", gap: 14, marginTop: 6 }}>
+                  <Text style={styles.sheetSub}>Target: {selected.targetR}R</Text>
+                  {selected.tradeCount > 0 ? (
+                    <Text style={[styles.sheetSub, { color: colors.brand }]}>
+                      · {selected.tradeCount} trade{selected.tradeCount === 1 ? "" : "s"} logged
+                    </Text>
+                  ) : null}
+                </View>
 
                 <View style={{ height: 18 }} />
                 <Text style={styles.modalLabel}>R Earned Today</Text>
@@ -197,12 +333,21 @@ export default function PlannerScreen() {
   );
 }
 
-function SummaryPill({ label, value, color }: { label: string; value: number; color: string }) {
+function SummaryPill({ label, value, color }: { label: string; value: number | string; color: string }) {
   return (
     <GlassCard style={{ flex: 1, padding: 12 }}>
       <Text style={{ color: colors.textDim, fontSize: 9, fontWeight: "700", letterSpacing: 1.2 }}>{label.toUpperCase()}</Text>
-      <Text style={{ color, fontFamily: fonts.mono, fontSize: 22, fontWeight: "800", marginTop: 4 }}>{value}</Text>
+      <Text style={{ color, fontFamily: fonts.mono, fontSize: 18, fontWeight: "800", marginTop: 4 }}>{value}</Text>
     </GlassCard>
+  );
+}
+
+function MiniMetric({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <View>
+      <Text style={styles.miniLabel}>{label}</Text>
+      <Text style={[styles.miniValue, { color }]}>{value}</Text>
+    </View>
   );
 }
 
@@ -213,13 +358,38 @@ const styles = StyleSheet.create({
   },
   brandLabel: { color: colors.brand, fontSize: 10, letterSpacing: 2.2, fontWeight: "700" },
   title: { color: colors.text, fontSize: 26, fontWeight: "800", marginTop: 4 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  cell: {
-    width: "13.6%", aspectRatio: 1, borderRadius: 10, borderWidth: 1,
+
+  weekCard: { padding: 14, marginBottom: 14 },
+  weekHeader: { flexDirection: "row", alignItems: "center" },
+  weekTitle: { color: colors.text, fontSize: 13, letterSpacing: 1.6, fontWeight: "800" },
+  weekRange: { color: colors.textMuted, fontSize: 11, fontWeight: "600" },
+  miniLabel: { color: colors.textDim, fontSize: 9, letterSpacing: 1, fontWeight: "700" },
+  miniValue: { fontFamily: fonts.mono, fontSize: 13, fontWeight: "800", marginTop: 2 },
+
+  weekBody: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
+  dowRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+  dowLabel: { flex: 1, textAlign: "center", color: colors.textDim, fontSize: 9, letterSpacing: 1.4, fontWeight: "700" },
+  weekGrid: { flexDirection: "row", gap: 6 },
+  dayCell: {
+    flex: 1, aspectRatio: 0.78, borderRadius: 10, borderWidth: 1,
+    alignItems: "center", justifyContent: "flex-start", paddingTop: 6, position: "relative",
+  },
+  dayCellEmpty: { backgroundColor: "transparent", borderStyle: "dashed", borderColor: colors.border, opacity: 0.4 },
+  dayMonth: { color: colors.textDim, fontSize: 8, letterSpacing: 1, fontWeight: "700" },
+  dayDate: { color: colors.text, fontFamily: fonts.mono, fontSize: 18, fontWeight: "800", marginTop: 1 },
+  dayNum: { color: colors.textMuted, fontSize: 8, fontWeight: "700", marginTop: 1 },
+  dayTarget: { color: colors.textDim, fontSize: 9, marginTop: 4, fontFamily: fonts.mono },
+  dayR: { fontSize: 10, fontFamily: fonts.mono, fontWeight: "800", marginTop: 4 },
+  tradeDot: {
+    position: "absolute", top: 4, right: 4,
+    backgroundColor: colors.brand, width: 16, height: 16, borderRadius: 8,
     alignItems: "center", justifyContent: "center",
   },
-  cellDay: { color: colors.text, fontFamily: fonts.mono, fontSize: 13, fontWeight: "700" },
-  cellR: { color: colors.textDim, fontSize: 8, marginTop: 2 },
+  tradeDotText: { color: "#000", fontSize: 9, fontWeight: "800" },
+  todayPin: {
+    position: "absolute", bottom: 4, width: 6, height: 6, borderRadius: 3, backgroundColor: colors.brand,
+  },
+
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   sheet: {
     backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
@@ -228,7 +398,7 @@ const styles = StyleSheet.create({
   sheetHandle: { width: 40, height: 4, backgroundColor: colors.borderStrong, borderRadius: 2, alignSelf: "center", marginBottom: 16 },
   sheetEyebrow: { color: colors.brand, fontSize: 10, letterSpacing: 1.6, fontWeight: "700" },
   sheetTitle: { color: colors.text, fontSize: 22, fontWeight: "800", marginTop: 4 },
-  sheetSub: { color: colors.gold, fontFamily: fonts.mono, fontSize: 13, marginTop: 6 },
+  sheetSub: { color: colors.gold, fontFamily: fonts.mono, fontSize: 13 },
   modalLabel: { color: colors.textDim, fontSize: 10, letterSpacing: 1.2, fontWeight: "700" },
   input: {
     marginTop: 8, color: colors.text, fontSize: 15, paddingHorizontal: 14, height: 46,

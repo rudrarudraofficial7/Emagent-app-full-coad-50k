@@ -301,6 +301,31 @@ async def ensure_plan(start_date_iso: str, total_days: int, expected_r: float):
     daily_r = round(expected_r / total_days, 2) if total_days > 0 else 0
     start = datetime.fromisoformat(start_date_iso.replace("Z", "+00:00")) if start_date_iso else datetime.now(timezone.utc)
 
+    # If existing plan has any weekend dates, treat as legacy and rebuild from scratch
+    if existing_count > 0:
+        legacy = await db.plan_days.find_one({}, sort=[("dayNumber", 1)])
+        if legacy and legacy.get("date"):
+            try:
+                first_dt = datetime.fromisoformat(legacy["date"].replace("Z", "+00:00"))
+                if first_dt.weekday() >= 5:
+                    await db.plan_days.delete_many({})
+                    existing_count = 0
+            except Exception:
+                pass
+
+    def weekday_advance(base: datetime, n: int) -> datetime:
+        """Return base + n trading days (Mon-Fri only). n=0 => first weekday on/after base."""
+        d = base
+        # Move to next weekday if base is weekend
+        while d.weekday() >= 5:
+            d = d + timedelta(days=1)
+        added = 0
+        while added < n:
+            d = d + timedelta(days=1)
+            if d.weekday() < 5:
+                added += 1
+        return d
+
     # Trim down: drop only the trailing days the user no longer wants.
     if existing_count > total_days:
         await db.plan_days.delete_many({"dayNumber": {"$gt": total_days}})
@@ -314,12 +339,20 @@ async def ensure_plan(start_date_iso: str, total_days: int, expected_r: float):
         for i in range(existing_count + 1, total_days + 1):
             d = PlanDay(
                 dayNumber=i,
-                date=(start + timedelta(days=i - 1)).isoformat(),
+                date=weekday_advance(start, i - 1).isoformat(),
                 targetR=daily_r,
             ).model_dump()
             docs.append(d)
         if docs:
             await db.plan_days.insert_many(docs)
+
+
+def _journal_date_key(iso_str: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        return dt.date().isoformat()
+    except Exception:
+        return ""
 
 async def ensure_starter_account():
     cnt = await db.accounts.count_documents({})
@@ -485,6 +518,71 @@ async def update_plan_day(day_number: int, payload: PlanDayUpdate):
     if res.matched_count == 0:
         raise HTTPException(404, "Plan day not found")
     return await db.plan_days.find_one({"dayNumber": day_number}, {"_id": 0})
+
+
+@api_router.get("/calendar")
+async def calendar():
+    """Plan grouped into trading weeks (5 weekdays each) with journal-derived trade stats."""
+    s = await ensure_settings()
+    await ensure_plan(s.get("startDate") or now_iso(), int(s.get("tradingDaysAvailable", 90)), float(s.get("expectedR", 210)))
+    plan = await db.plan_days.find({}, {"_id": 0}).sort("dayNumber", 1).to_list(500)
+    journal = await db.journal.find({}, {"_id": 0}).to_list(2000)
+
+    # Index journal entries by calendar date
+    by_date: Dict[str, List[dict]] = {}
+    for j in journal:
+        key = _journal_date_key(j.get("date", ""))
+        if key:
+            by_date.setdefault(key, []).append(j)
+
+    enriched = []
+    for d in plan:
+        key = _journal_date_key(d.get("date", ""))
+        trades = by_date.get(key, [])
+        wins = sum(1 for t in trades if t.get("result") == "win")
+        losses = sum(1 for t in trades if t.get("result") == "loss")
+        journal_r = round(sum(float(t.get("rEarned", 0)) for t in trades), 2)
+        try:
+            dt = datetime.fromisoformat(d["date"].replace("Z", "+00:00"))
+            weekday = dt.weekday()  # 0=Mon
+        except Exception:
+            weekday = 0
+        enriched.append({
+            **d,
+            "weekday": weekday,
+            "tradeCount": len(trades),
+            "journalR": journal_r,
+            "wins": wins,
+            "losses": losses,
+        })
+
+    # Group every 5 days into a "week"
+    weeks = []
+    for chunk_start in range(0, len(enriched), 5):
+        chunk = enriched[chunk_start:chunk_start + 5]
+        if not chunk:
+            continue
+        total_r = round(sum(float(c.get("rEarned", 0) or c.get("journalR", 0)) for c in chunk), 2)
+        # Use rEarned from plan if user logged it there; else journalR
+        plan_r = round(sum(float(c.get("rEarned", 0)) for c in chunk), 2)
+        journal_r_sum = round(sum(float(c.get("journalR", 0)) for c in chunk), 2)
+        weeks.append({
+            "weekNumber": (chunk_start // 5) + 1,
+            "startDay": chunk[0]["dayNumber"],
+            "endDay": chunk[-1]["dayNumber"],
+            "startDate": chunk[0]["date"],
+            "endDate": chunk[-1]["date"],
+            "plannedR": round(sum(float(c.get("targetR", 0)) for c in chunk), 2),
+            "rEarned": plan_r,
+            "journalR": journal_r_sum,
+            "tradeCount": sum(c["tradeCount"] for c in chunk),
+            "wins": sum(c["wins"] for c in chunk),
+            "losses": sum(c["losses"] for c in chunk),
+            "completed": sum(1 for c in chunk if c.get("status") == "completed"),
+            "days": chunk,
+        })
+
+    return {"weeks": weeks, "days": enriched}
 
 # ====================== Journal ======================
 

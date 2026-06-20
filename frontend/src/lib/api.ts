@@ -64,4 +64,7 @@ export const api = {
   // Copy Trading
   getCopyTrading: () => request<any>("/copy-trading"),
   setMaster: (id: string) => request<any>(`/copy-trading/master/${id}`, { method: "PUT" }),
+
+  // Calendar
+  getCalendar: () => request<any>("/calendar"),
 };
