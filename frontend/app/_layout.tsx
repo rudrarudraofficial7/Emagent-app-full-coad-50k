@@ -17,19 +17,18 @@ LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
 function AuthGate() {
-  const { user, loading } = useAuth();
+  const { loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
+  // Login gate removed — app is accessible without sign-in. If somebody lands on
+  // /login by accident (legacy link), bounce them straight to the dashboard.
   useEffect(() => {
     if (loading) return;
-    const onLogin = segments[0] === "login";
-    if (!user && !onLogin) {
-      router.replace("/login");
-    } else if (user && onLogin) {
+    if (segments[0] === "login") {
       router.replace("/(tabs)");
     }
-  }, [user, loading, segments, router]);
+  }, [loading, segments, router]);
 
   if (loading) {
     return (
