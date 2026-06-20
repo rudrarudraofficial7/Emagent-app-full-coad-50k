@@ -20,6 +20,7 @@ import { ProgressRing } from "@/src/components/ProgressRing";
 import { SectionHeader } from "@/src/components/SectionHeader";
 import { PrimaryButton } from "@/src/components/PrimaryButton";
 import { PulseDot } from "@/src/components/PulseDot";
+import { AddPayoutSheet } from "@/src/components/AddPayoutSheet";
 import { colors, fonts, spacing } from "@/src/theme";
 import { api } from "@/src/lib/api";
 
@@ -31,6 +32,7 @@ export default function HomeScreen() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [addPayoutOpen, setAddPayoutOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -59,6 +61,17 @@ export default function HomeScreen() {
   }
 
   const { kpis, goal, scalingRoadmap, recentPayouts, settings } = data;
+
+  const paceColor =
+    kpis.paceStatus === "ahead" ? colors.green :
+    kpis.paceStatus === "behind" ? colors.amber :
+    kpis.paceStatus === "expired" ? colors.red :
+    colors.brand;
+  const paceLabel =
+    kpis.paceStatus === "ahead" ? "AHEAD OF PACE" :
+    kpis.paceStatus === "behind" ? "BEHIND · PUSH HARDER" :
+    kpis.paceStatus === "expired" ? "DAYS EXHAUSTED" :
+    "ON TRACK";
 
   return (
     <ScreenBackground>
@@ -126,6 +139,41 @@ export default function HomeScreen() {
             </View>
           </GlassCard>
         </Animated.View>
+
+        {/* Today's Required R Calculator */}
+        <View style={{ height: spacing.lg }} />
+        <Animated.View entering={FadeIn.delay(160).duration(420)}>
+          <GlassCard glow="brand" style={styles.calcCard} testID="today-r-calc-card">
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons name="flash" color={colors.brand} size={14} />
+                <Text style={[styles.calcLabel, { marginLeft: 6 }]}>TODAY{"\u2019"}S REQUIRED R</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 6 }}>
+                <Text style={[styles.calcValue, { color: paceColor }]} testID="today-required-r-value">
+                  {kpis.todayRequiredR}
+                </Text>
+                <Text style={styles.calcSuffix}>R / day</Text>
+              </View>
+              <View style={[styles.paceTag, { borderColor: paceColor, backgroundColor: `${paceColor}1F` }]}>
+                <Text style={[styles.paceText, { color: paceColor }]}>{paceLabel}</Text>
+              </View>
+              <Text style={styles.calcFormula}>
+                {kpis.remainingR}R remaining ÷ {kpis.daysRemaining} days · original target {kpis.originalDailyR}R/day
+              </Text>
+            </View>
+          </GlassCard>
+        </Animated.View>
+
+        {/* Quick Add Payout button */}
+        <View style={{ height: spacing.md }} />
+        <PrimaryButton
+          testID="quick-add-payout-btn"
+          label="+ Add Received Payout"
+          variant="gold"
+          icon={<Ionicons name="add-circle" color="#000" size={18} />}
+          onPress={() => setAddPayoutOpen(true)}
+        />
 
         {/* KPI Grid */}
         <View style={{ height: spacing.lg }} />
@@ -245,6 +293,8 @@ export default function HomeScreen() {
           ))
         )}
       </ScrollView>
+
+      <AddPayoutSheet visible={addPayoutOpen} onClose={() => setAddPayoutOpen(false)} onSaved={load} />
     </ScreenBackground>
   );
 }
@@ -294,4 +344,11 @@ const styles = StyleSheet.create({
   payoutAccount: { color: colors.text, fontWeight: "700", fontSize: 13 },
   payoutMeta: { color: colors.textDim, fontSize: 11, marginTop: 2 },
   payoutAmount: { fontFamily: fonts.mono, fontWeight: "800", fontSize: 16 },
+  calcCard: { padding: spacing.lg, flexDirection: "row", alignItems: "center" },
+  calcLabel: { color: colors.brand, fontSize: 10, letterSpacing: 1.6, fontWeight: "800" },
+  calcValue: { fontFamily: fonts.mono, fontSize: 36, fontWeight: "800", letterSpacing: -0.5 },
+  calcSuffix: { color: colors.textMuted, fontFamily: fonts.mono, fontSize: 13, marginLeft: 8, marginBottom: 8 },
+  paceTag: { alignSelf: "flex-start", borderWidth: 1, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, marginTop: 8 },
+  paceText: { fontSize: 9, letterSpacing: 1.3, fontWeight: "800" },
+  calcFormula: { color: colors.textDim, fontSize: 10, marginTop: 8, letterSpacing: 0.3 },
 });

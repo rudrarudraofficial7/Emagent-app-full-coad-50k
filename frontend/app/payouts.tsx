@@ -9,6 +9,8 @@ import { ScreenBackground } from "@/src/components/ScreenBackground";
 import { GlassCard } from "@/src/components/GlassCard";
 import { ProgressRing } from "@/src/components/ProgressRing";
 import { SectionHeader } from "@/src/components/SectionHeader";
+import { PrimaryButton } from "@/src/components/PrimaryButton";
+import { AddPayoutSheet } from "@/src/components/AddPayoutSheet";
 import { colors, fonts, spacing } from "@/src/theme";
 import { api } from "@/src/lib/api";
 
@@ -16,6 +18,7 @@ export default function PayoutsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [data, setData] = useState<any>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -38,7 +41,9 @@ export default function PayoutsScreen() {
       <View style={[styles.topbar, { paddingTop: insets.top + 6 }]}>
         <Pressable testID="back-btn" onPress={() => router.back()} style={styles.iconBtn}><Ionicons name="arrow-back" color={colors.text} size={20} /></Pressable>
         <Text style={styles.topTitle}>PAYOUT COMMAND</Text>
-        <View style={{ width: 40 }} />
+        <Pressable testID="payouts-add-btn" onPress={() => setAddOpen(true)} style={[styles.iconBtn, { backgroundColor: colors.gold, borderColor: colors.gold }]}>
+          <Ionicons name="add" color="#000" size={20} />
+        </Pressable>
       </View>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 80 }}>
         <GlassCard glow="gold" style={{ alignItems: "center", padding: 22 }}>
@@ -105,6 +110,7 @@ export default function PayoutsScreen() {
           </GlassCard>
         ))}
       </ScrollView>
+      <AddPayoutSheet visible={addOpen} onClose={() => setAddOpen(false)} onSaved={load} />
     </ScreenBackground>
   );
 }

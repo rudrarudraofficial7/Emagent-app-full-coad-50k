@@ -9,10 +9,12 @@ import { GlassCard } from "@/src/components/GlassCard";
 import { PrimaryButton } from "@/src/components/PrimaryButton";
 import { colors, radius, spacing } from "@/src/theme";
 import { api } from "@/src/lib/api";
+import { useAuth } from "@/src/lib/auth";
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user, signOut } = useAuth();
   const [traderName, setTraderName] = useState("");
   const [days, setDays] = useState("");
   const [expR, setExpR] = useState("");
@@ -86,6 +88,31 @@ export default function SettingsScreen() {
             <RuleItem label="Funded Day Threshold" value="≥ $150 profit · 5 days required" />
             <RuleItem label="Scaling Rule" value="+1 new 50K after each payout" />
           </GlassCard>
+
+          {user ? (
+            <>
+              <View style={{ height: spacing.xl }} />
+              <GlassCard style={{ padding: 16 }} testID="account-card">
+                <Text style={styles.sectionTitle}>ACCOUNT</Text>
+                <View style={styles.userRow}>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{(user.name || user.email).slice(0, 1).toUpperCase()}</Text>
+                  </View>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={styles.userName}>{user.name || "Trader"}</Text>
+                    <Text style={styles.userEmail}>{user.email}</Text>
+                  </View>
+                </View>
+                <View style={{ height: 14 }} />
+                <PrimaryButton
+                  testID="logout-btn"
+                  label="Sign Out"
+                  variant="danger"
+                  onPress={async () => { await signOut(); router.replace("/login"); }}
+                />
+              </GlassCard>
+            </>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenBackground>
@@ -130,4 +157,9 @@ const styles = StyleSheet.create({
   ruleRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   ruleLabel: { color: colors.textMuted, fontSize: 11, letterSpacing: 1, fontWeight: "700" },
   ruleValue: { color: colors.text, fontSize: 13, marginTop: 4 },
+  userRow: { flexDirection: "row", alignItems: "center" },
+  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.brandDim, borderWidth: 1, borderColor: colors.brand, alignItems: "center", justifyContent: "center" },
+  avatarText: { color: colors.brand, fontSize: 16, fontWeight: "800" },
+  userName: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  userEmail: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
 });

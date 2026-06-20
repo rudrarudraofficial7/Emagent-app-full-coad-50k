@@ -1,5 +1,5 @@
 """Freezy Prop Firm Command Center - Backend API."""
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -9,6 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal
 import uuid
+import httpx
 from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
@@ -34,6 +35,109 @@ def strip(doc: dict) -> dict:
         return doc
     doc.pop("_id", None)
     return doc
+
+
+# ====================== Auth ======================
+
+EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+
+
+class SessionBody(BaseModel):
+    session_token: str
+
+
+async def get_current_user(request: Request) -> dict:
+    """Extract Bearer token and resolve user. Raises 401 if missing/invalid."""
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = auth_header.split(" ", 1)[1].strip()
+
+    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    expires_at = session.get("expires_at")
+    if isinstance(expires_at, datetime):
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="Session expired")
+
+    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+@api_router.post("/auth/session")
+async def auth_session(body: SessionBody):
+    """Exchange Emergent session_token: verify via Emergent, upsert user, persist session."""
+    if not body.session_token:
+        raise HTTPException(400, "session_token required")
+    async with httpx.AsyncClient(timeout=20.0) as client_http:
+        resp = await client_http.get(
+            EMERGENT_AUTH_URL,
+            headers={"X-Session-ID": body.session_token},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(401, f"Emergent session lookup failed: {resp.status_code}")
+    data = resp.json()
+    email = data.get("email")
+    if not email:
+        raise HTTPException(401, "Invalid session payload")
+
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        user_id = existing["user_id"]
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"name": data.get("name", existing.get("name")),
+                      "picture": data.get("picture", existing.get("picture"))}},
+        )
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        user = {
+            "user_id": user_id,
+            "email": email,
+            "name": data.get("name", ""),
+            "picture": data.get("picture", ""),
+            "created_at": datetime.now(timezone.utc),
+        }
+        await db.users.insert_one(user.copy())
+
+    session_token = data.get("session_token") or body.session_token
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.user_sessions.update_one(
+        {"session_token": session_token},
+        {"$set": {
+            "session_token": session_token,
+            "user_id": user["user_id"],
+            "expires_at": expires_at,
+            "created_at": datetime.now(timezone.utc),
+        }},
+        upsert=True,
+    )
+    return {
+        "user": strip(user),
+        "session_token": session_token,
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+@api_router.get("/auth/me")
+async def auth_me(user: dict = Depends(get_current_user)):
+    return {"user": user}
+
+
+@api_router.post("/auth/logout")
+async def auth_logout(request: Request):
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        await db.user_sessions.delete_one({"session_token": token})
+    return {"ok": True}
 
 # ====================== Models ======================
 
@@ -485,6 +589,37 @@ async def dashboard():
     days_available = int(s.get("tradingDaysAvailable", 90))
     days_remaining = max(days_available - days_used, 0)
     remaining_payout = max(round(goal - total_payout, 2), 0.0)
+    remaining_r = max(round(float(s.get("expectedR", 210)) - total_r, 2), 0.0)
+
+    # Required R/day & velocity-based ETA
+    today_required_r = round(remaining_r / days_remaining, 2) if days_remaining > 0 else 0.0
+    pace_status = "on_track"
+    if days_remaining == 0 and total_r < float(s.get("expectedR", 210)):
+        pace_status = "expired"
+    elif today_required_r > (float(s.get("expectedR", 210)) / days_available) * 1.5 and days_available > 0:
+        pace_status = "behind"
+    elif total_r > (float(s.get("expectedR", 210)) / days_available) * days_used:
+        pace_status = "ahead"
+
+    # ETA forecast based on payout velocity
+    eta_date = None
+    days_to_goal = None
+    projected_monthly = 0.0
+    forecast_available = False
+    if all_payouts and total_payout > 0:
+        first_dt = datetime.fromisoformat(all_payouts[0]["date"].replace("Z", "+00:00"))
+        elapsed_days = max((datetime.now(timezone.utc) - first_dt).days, 1)
+        daily_velocity = total_payout / elapsed_days
+        if daily_velocity > 0 and remaining_payout > 0:
+            days_to_goal = int(remaining_payout / daily_velocity) + 1
+            eta_dt = datetime.now(timezone.utc) + timedelta(days=days_to_goal)
+            eta_date = eta_dt.isoformat()
+            projected_monthly = round(daily_velocity * 30, 2)
+            forecast_available = True
+        elif remaining_payout == 0:
+            eta_date = datetime.now(timezone.utc).isoformat()
+            days_to_goal = 0
+            forecast_available = True
 
     # Next account to add: rule says start 1x25K, after each payout add 1x50K.
     eligible_to_add = len(all_payouts) >= (len(accounts) - 1)
@@ -509,6 +644,16 @@ async def dashboard():
             "totalTrades": total_trades,
             "wins": wins,
             "losses": losses,
+            "todayRequiredR": today_required_r,
+            "paceStatus": pace_status,
+            "originalDailyR": round(float(s.get("expectedR", 210)) / days_available, 2) if days_available > 0 else 0,
+        },
+        "forecast": {
+            "available": forecast_available,
+            "etaDate": eta_date,
+            "daysToGoal": days_to_goal,
+            "projectedMonthly": projected_monthly,
+            "dailyVelocity": round(total_payout / max((datetime.now(timezone.utc) - datetime.fromisoformat(all_payouts[0]["date"].replace("Z", "+00:00"))).days, 1), 2) if all_payouts else 0,
         },
         "goal": {
             "target": goal,
@@ -576,6 +721,12 @@ logger = logging.getLogger(__name__)
 async def on_startup():
     try:
         await bootstrap()
+        # Auth indexes
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("user_id", unique=True)
+        await db.user_sessions.create_index("session_token", unique=True)
+        await db.user_sessions.create_index("user_id")
+        await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
         logger.info("Bootstrap complete")
     except Exception as e:
         logger.error(f"Bootstrap failed: {e}")

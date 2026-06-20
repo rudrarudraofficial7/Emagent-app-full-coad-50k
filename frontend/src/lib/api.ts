@@ -1,10 +1,14 @@
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
+let authToken: string | null = null;
+export const setAuthToken = (token: string | null) => { authToken = token; };
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}/api${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+  if (init?.headers) Object.assign(headers, init.headers as Record<string, string>);
+
+  const res = await fetch(`${BASE}/api${path}`, { ...init, headers });
   if (!res.ok) {
     const txt = await res.text();
     throw new Error(`API ${res.status}: ${txt}`);
@@ -13,6 +17,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Auth
+  authSession: (session_token: string) =>
+    request<any>("/auth/session", { method: "POST", body: JSON.stringify({ session_token }) }),
+  authMe: () => request<any>("/auth/me"),
+  authLogout: () => request<any>("/auth/logout", { method: "POST" }),
+
   // Settings
   getSettings: () => request<any>("/settings"),
   updateSettings: (body: any) => request<any>("/settings", { method: "PUT", body: JSON.stringify(body) }),

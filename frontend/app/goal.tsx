@@ -31,6 +31,10 @@ export default function GoalScreen() {
   if (!data) return <ScreenBackground><ActivityIndicator color={colors.brand} style={{ marginTop: 200 }} /></ScreenBackground>;
 
   const { goal, kpis } = data;
+  const forecast = data.forecast || { available: false };
+  const etaText = forecast.etaDate
+    ? new Date(forecast.etaDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : "—";
 
   return (
     <ScreenBackground>
@@ -62,6 +66,58 @@ export default function GoalScreen() {
             ${goal.current.toFixed(0)} <Text style={{ color: colors.textDim }}>/ ${goal.target.toFixed(0)}</Text>
           </Text>
         </LinearGradient>
+
+        {/* ETA Forecast */}
+        <View style={{ height: spacing.lg }} />
+        <Text style={styles.sectionTitle}>ETA FORECAST</Text>
+        <GlassCard glow={forecast.available ? "brand" : "none"} style={{ padding: 18 }} testID="eta-forecast-card">
+          {forecast.available ? (
+            <>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.forecastLabel}>PROJECTED COMPLETION</Text>
+                  <Text style={[styles.forecastValue, { color: colors.brand }]} testID="eta-date-value">
+                    {forecast.daysToGoal === 0 ? "TODAY" : etaText}
+                  </Text>
+                  <Text style={styles.forecastHint}>
+                    {forecast.daysToGoal === 0 ? "Goal reached!" : `${forecast.daysToGoal} days from now`}
+                  </Text>
+                </View>
+                <View style={[styles.iconWrap, { backgroundColor: colors.brandDim }]}>
+                  <Ionicons name="rocket" color={colors.brand} size={22} />
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.forecastLabel}>PROJECTED MONTHLY</Text>
+                  <Text style={[styles.forecastSmallValue, { color: colors.gold }]} testID="projected-monthly-value">
+                    ${(forecast.projectedMonthly || 0).toFixed(0)}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.forecastLabel}>DAILY VELOCITY</Text>
+                  <Text style={[styles.forecastSmallValue, { color: colors.green }]}>
+                    ${(forecast.dailyVelocity || 0).toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.forecastFormula}>
+                Based on your current payout pace · improves as you record more payouts
+              </Text>
+            </>
+          ) : (
+            <View style={{ alignItems: "center", paddingVertical: 8 }}>
+              <Ionicons name="time" color={colors.textDim} size={28} />
+              <Text style={[styles.forecastValue, { fontSize: 14, color: colors.textMuted, marginTop: 8 }]}>
+                Forecast Locked
+              </Text>
+              <Text style={[styles.forecastHint, { textAlign: "center" }]}>
+                Record your first payout to unlock ETA prediction.
+              </Text>
+            </View>
+          )}
+        </GlassCard>
 
         <View style={{ height: spacing.lg }} />
         <View style={{ flexDirection: "row", gap: 10 }}>
@@ -123,4 +179,11 @@ const styles = StyleSheet.create({
   tierTitle: { fontSize: 14, fontWeight: "800", letterSpacing: 1.2 },
   tierRange: { color: colors.textDim, fontSize: 11, marginTop: 2 },
   tierBadge: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
+  forecastLabel: { color: colors.textDim, fontSize: 10, letterSpacing: 1.2, fontWeight: "700" },
+  forecastValue: { color: colors.text, fontFamily: fonts.mono, fontSize: 22, fontWeight: "800", marginTop: 6 },
+  forecastSmallValue: { fontFamily: fonts.mono, fontSize: 17, fontWeight: "800", marginTop: 6 },
+  forecastHint: { color: colors.textMuted, fontSize: 11, marginTop: 4 },
+  forecastFormula: { color: colors.textDim, fontSize: 10, marginTop: 12, lineHeight: 15 },
+  iconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: 14 },
 });
