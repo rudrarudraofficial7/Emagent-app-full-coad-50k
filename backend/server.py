@@ -193,22 +193,29 @@ async def ensure_settings() -> dict:
     return strip(s)
 
 async def ensure_plan(start_date_iso: str, total_days: int, expected_r: float):
-    existing = await db.plan_days.count_documents({})
-    if existing >= total_days:
-        return
-    await db.plan_days.delete_many({})
-    start = datetime.fromisoformat(start_date_iso.replace("Z", "+00:00")) if start_date_iso else datetime.now(timezone.utc)
+    existing_count = await db.plan_days.count_documents({})
     daily_r = round(expected_r / total_days, 2) if total_days > 0 else 0
-    docs = []
-    for i in range(1, total_days + 1):
-        d = PlanDay(
-            dayNumber=i,
-            date=(start + timedelta(days=i - 1)).isoformat(),
-            targetR=daily_r,
-        ).model_dump()
-        docs.append(d)
-    if docs:
-        await db.plan_days.insert_many(docs)
+    start = datetime.fromisoformat(start_date_iso.replace("Z", "+00:00")) if start_date_iso else datetime.now(timezone.utc)
+
+    # Trim down: drop only the trailing days the user no longer wants.
+    if existing_count > total_days:
+        await db.plan_days.delete_many({"dayNumber": {"$gt": total_days}})
+
+    # Refresh target R on every existing day so a new expectedR propagates.
+    await db.plan_days.update_many({}, {"$set": {"targetR": daily_r}})
+
+    # Append any missing days without touching user-entered checklist/notes/rEarned.
+    if existing_count < total_days:
+        docs = []
+        for i in range(existing_count + 1, total_days + 1):
+            d = PlanDay(
+                dayNumber=i,
+                date=(start + timedelta(days=i - 1)).isoformat(),
+                targetR=daily_r,
+            ).model_dump()
+            docs.append(d)
+        if docs:
+            await db.plan_days.insert_many(docs)
 
 async def ensure_starter_account():
     cnt = await db.accounts.count_documents({})
