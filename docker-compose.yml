@@ -1,0 +1,18 @@
+{
+  "services": {
+    "backend": {
+      "build": {
+        "context": ".",
+        "dockerfile": "Dockerfile"
+      },
+      "up": {
+        "detach": true
+      },
+      "environment": {
+        "MONGO_URL": "${MONGO_URL}",
+        "DB_NAME": "${DB_NAME}",
+        "PORT": "8000"
+      }
+    }
+  }
+}
