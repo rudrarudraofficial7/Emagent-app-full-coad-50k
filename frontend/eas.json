@@ -7,24 +7,18 @@
       "android": {
         "buildType": "apk"
       },
-      "ios": {
-        "buildType": "simulator"
-      }
+      "ios": {}
     },
     "production": {
       "android": {
-        "buildType": "aab",
-        "gradleCommand": ":app:bundleRelease"
+        "buildType": "app-bundle"
       },
-      "ios": {
-        "buildType": "archive"
-      }
+      "ios": {}
     }
   },
   "submit": {
     "production": {
       "android": {
-        "serviceAccount": "path/to/service-account.json",
         "track": "production"
       },
       "ios": {
