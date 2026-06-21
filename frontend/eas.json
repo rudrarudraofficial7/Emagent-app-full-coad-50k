@@ -6,18 +6,31 @@
     "preview": {
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "buildType": "simulator"
       }
     },
     "production": {
       "android": {
-        "buildType": "apk"
+        "buildType": "aab",
+        "gradleCommand": ":app:bundleRelease"
+      },
+      "ios": {
+        "buildType": "archive"
       }
     }
   },
   "submit": {
     "production": {
       "android": {
-        "serviceAccount": "path/to/service-account.json"
+        "serviceAccount": "path/to/service-account.json",
+        "track": "production"
+      },
+      "ios": {
+        "appleId": "your-apple-id@example.com",
+        "ascAppId": "1234567890",
+        "appleTeamId": "XXXXXXXXXX"
       }
     }
   }
