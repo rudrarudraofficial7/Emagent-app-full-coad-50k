@@ -115,7 +115,7 @@ function getTVHtml(feed: string) {
   return `<!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;background:#050505;overflow:hidden}
@@ -194,7 +194,7 @@ export default function MarketsScreen() {
       await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       setIsLandscape(false);
     } else {
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       setIsLandscape(true);
     }
   };
@@ -223,51 +223,52 @@ export default function MarketsScreen() {
     <View style={{ flex:1, backgroundColor: COLORS.bg }}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
 
-      {/* ====== CHART MODAL ====== */}
+      {/* ====== CHART MODAL - FULL SCREEN ====== */}
       {chartSymbol && (
         <View style={StyleSheet.absoluteFill}>
-          {/* Top bar */}
+          {/* Minimal Top Bar */}
           <View style={{ position:'absolute',top:0,left:0,right:0,zIndex:10,
-            flexDirection:'row',alignItems:'center',gap:10,
-            paddingTop: insets.top + 8, paddingBottom:10, paddingHorizontal:14,
+            flexDirection:'row',alignItems:'center',gap:8,
+            paddingTop: Platform.OS === 'android' ? 12 : insets.top + 4, 
+            paddingBottom:8, 
+            paddingHorizontal:12,
             backgroundColor:'rgba(5,5,5,0.95)',
-            borderBottomWidth:1, borderBottomColor: COLORS.borderBrand }}>
+            borderBottomWidth:1, borderBottomColor: COLORS.borderBrand,
+            height: Platform.OS === 'android' ? 56 : 44 + insets.top }}>
+            
             <TouchableOpacity onPress={closeChart}
-              style={{ backgroundColor: COLORS.brandDim, borderRadius:8, borderWidth:1,
-                borderColor: COLORS.borderBrand, paddingHorizontal:12, paddingVertical:6 }}>
-              <Text style={{ color: COLORS.brand, fontWeight:'700', fontSize:13 }}>← Back</Text>
+              style={{ width:36, height:36, borderRadius:8, borderWidth:1,
+                borderColor: COLORS.borderBrand, alignItems:'center', justifyContent:'center' }}>
+              <Ionicons name="chevron-back" size={20} color={COLORS.brand} />
             </TouchableOpacity>
-            <View style={{ flex:1 }}>
-              <Text style={{ color: COLORS.brand, fontWeight:'800', fontSize:15, letterSpacing:1 }}>
+            
+            <View style={{ flex:1, marginLeft:4 }}>
+              <Text style={{ color: COLORS.brand, fontWeight:'800', fontSize:14 }}>
                 {chartSymbol.base}
               </Text>
-              <Text style={{ color: COLORS.textMuted, fontSize:10 }}>{chartSymbol.name}</Text>
             </View>
-            {prices[chartSymbol.base] && (
-              <View style={{ alignItems:'flex-end' }}>
-                <Text style={{ color: COLORS.text, fontWeight:'700', fontSize:15 }}>
-                  {fmtPrice(prices[chartSymbol.base].price)}
-                </Text>
-                <Text style={{ color: prices[chartSymbol.base].pct >= 0 ? COLORS.green : COLORS.red, fontSize:11 }}>
-                  {prices[chartSymbol.base].pct >= 0 ? '+' : ''}{prices[chartSymbol.base].pct.toFixed(2)}%
-                </Text>
-              </View>
-            )}
+            
             <TouchableOpacity onPress={toggleRotate}
-              style={{ backgroundColor: COLORS.brandDim, borderRadius:8, borderWidth:1,
-                borderColor: COLORS.borderBrand, padding:8 }}>
+              style={{ width:36, height:36, borderRadius:8, borderWidth:1,
+                borderColor: COLORS.borderBrand, alignItems:'center', justifyContent:'center' }}>
               <Ionicons name={isLandscape ? 'phone-portrait' : 'phone-landscape'} size={18} color={COLORS.brand} />
             </TouchableOpacity>
           </View>
 
-          {/* WebView */}
+          {/* WebView - Full Screen */}
           <WebView
             source={{ html: getTVHtml(chartSymbol.feed) }}
-            style={{ flex:1, marginTop: insets.top + 54, backgroundColor: COLORS.bg }}
-            javaScriptEnabled originWhitelist={['*']} domStorageEnabled
-            allowFileAccess allowUniversalAccessFromFileURLs
+            style={{ flex:1, marginTop: Platform.OS === 'android' ? 56 : 44 + insets.top, backgroundColor: COLORS.bg }}
+            javaScriptEnabled
+            originWhitelist={['*']} 
+            domStorageEnabled
+            allowFileAccess 
+            allowUniversalAccessFromFileURLs
             mixedContentMode="always"
             startInLoadingState
+            scrollEnabled={false}
+            bounces={false}
+            scalesPageToFit={false}
           />
         </View>
       )}
