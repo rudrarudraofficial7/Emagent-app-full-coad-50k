@@ -7,6 +7,7 @@ import {
   View,
   ActivityIndicator,
   Animated,
+  Text,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -16,10 +17,6 @@ import { AuthProvider, useAuth } from "@/src/lib/auth";
 
 LogBox.ignoreAllLogs(true);
 
-// Keep the native splash visible from cold start until icon fonts register.
-// Required because @expo/vector-icons' componentDidMount fallback fires
-// Font.loadAsync against a broken vendor path if any <Icon> mounts before
-// the family is registered — which throws on Android Expo Go.
 SplashScreen.preventAutoHideAsync();
 
 interface SplashScreenProps {
@@ -27,74 +24,87 @@ interface SplashScreenProps {
 }
 
 function CustomSplashScreen({ onAnimationComplete }: SplashScreenProps) {
-  const rotateAnim = new Animated.Value(0);
+  const candleOpacity1 = new Animated.Value(0);
+  const candleOpacity2 = new Animated.Value(0);
+  const candleOpacity3 = new Animated.Value(0);
+  const candleOpacity4 = new Animated.Value(0);
+  const candleOpacity5 = new Animated.Value(0);
+  const arrowOpacity = new Animated.Value(0);
+  const arrowScale = new Animated.Value(0.8);
   const textOpacity = new Animated.Value(0);
   const subtextOpacity = new Animated.Value(0);
-  const ringScaleAnim = new Animated.Value(1);
-  const ringOpacityAnim = new Animated.Value(1);
 
   useEffect(() => {
-    // Rotate animation (continuous loop)
-    const rotateLoop = Animated.loop(
-      Animated.timing(rotateAnim, {
+    // Staggered candle fade-in
+    Animated.sequence([
+      Animated.timing(candleOpacity1, {
         toValue: 1,
-        duration: 1000,
+        duration: 150,
         useNativeDriver: true,
-      })
-    );
+      }),
+      Animated.timing(candleOpacity2, {
+        toValue: 1,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(candleOpacity3, {
+        toValue: 1,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(candleOpacity4, {
+        toValue: 1,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(candleOpacity5, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
-    // Start rotation
-    rotateLoop.start();
+    // Arrow fade-in and scale (at 800ms)
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(arrowOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(arrowScale, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 800);
 
-    // Text fade in at 1 second
+    // FREEZ text fade-in (at 1.2s)
     setTimeout(() => {
       Animated.timing(textOpacity, {
         toValue: 1,
-        duration: 300,
+        duration: 400,
         useNativeDriver: true,
       }).start();
-    }, 1000);
+    }, 1200);
 
-    // Subtext fade in at 1.5 seconds
+    // Subtext fade-in (at 1.7s)
     setTimeout(() => {
       Animated.timing(subtextOpacity, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }).start();
-    }, 1500);
+    }, 1700);
 
-    // Ring scale up + fade out at 2 seconds
-    setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(ringScaleAnim, {
-          toValue: 1.5,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(ringOpacityAnim, {
-          toValue: 0,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }, 2000);
-
-    // Complete splash at 2.5 seconds
+    // Complete at 2.5s
     const timeout = setTimeout(() => {
       onAnimationComplete();
     }, 2500);
 
-    return () => {
-      clearTimeout(timeout);
-      rotateLoop.stop();
-    };
-  }, [rotateAnim, textOpacity, subtextOpacity, ringScaleAnim, ringOpacityAnim, onAnimationComplete]);
-
-  const rotateDeg = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
+    return () => clearTimeout(timeout);
+  }, []);
 
   return (
     <View
@@ -105,66 +115,147 @@ function CustomSplashScreen({ onAnimationComplete }: SplashScreenProps) {
         justifyContent: "center",
       }}
     >
-      {/* Outer ring (larger, dimmer) */}
-      <Animated.View
+      {/* Chart candles visualization */}
+      <View
         style={{
-          position: "absolute",
-          width: 140,
-          height: 140,
-          borderRadius: 70,
-          borderWidth: 2,
-          borderColor: "#00E5FF",
-          opacity: Animated.multiply(ringOpacityAnim, 0.3),
-          transform: [
-            { scale: ringScaleAnim },
-            { rotate: rotateDeg },
-          ],
-        }}
-      />
-
-      {/* Inner ring */}
-      <Animated.View
-        style={{
-          position: "absolute",
-          width: 120,
-          height: 120,
-          borderRadius: 60,
-          borderWidth: 2,
-          borderColor: "#00E5FF",
-          opacity: ringOpacityAnim,
-          transform: [
-            { scale: ringScaleAnim },
-            { rotate: rotateDeg },
-          ],
-        }}
-      />
-
-      {/* Main text */}
-      <Animated.Text
-        style={{
-          position: "absolute",
-          fontSize: 32,
-          fontWeight: "800",
-          color: "#00E5FF",
-          letterSpacing: 6,
-          opacity: textOpacity,
+          flexDirection: "row",
+          alignItems: "flex-end",
+          justifyContent: "center",
+          gap: 12,
+          marginBottom: 40,
+          height: 80,
         }}
       >
-        FREEZ AI
+        {/* Candle 1 - Gold */}
+        <Animated.View
+          style={{
+            width: 20,
+            height: 40,
+            backgroundColor: "#D4A574",
+            borderRadius: 2,
+            opacity: candleOpacity1,
+            justifyContent: "flex-start",
+            paddingTop: 2,
+          }}
+        >
+          <View style={{ width: 2, height: 20, backgroundColor: "#888", alignSelf: "center" }} />
+        </Animated.View>
+
+        {/* Candle 2 - Dark */}
+        <Animated.View
+          style={{
+            width: 20,
+            height: 55,
+            backgroundColor: "#4A4A4A",
+            borderRadius: 2,
+            opacity: candleOpacity2,
+            justifyContent: "flex-start",
+            paddingTop: 3,
+          }}
+        >
+          <View style={{ width: 2, height: 22, backgroundColor: "#888", alignSelf: "center" }} />
+        </Animated.View>
+
+        {/* Candle 3 - Gold (tallest) */}
+        <Animated.View
+          style={{
+            width: 20,
+            height: 70,
+            backgroundColor: "#D4A574",
+            borderRadius: 2,
+            opacity: candleOpacity3,
+            justifyContent: "flex-start",
+            paddingTop: 4,
+          }}
+        >
+          <View style={{ width: 2, height: 26, backgroundColor: "#888", alignSelf: "center" }} />
+        </Animated.View>
+
+        {/* Candle 4 - Dark */}
+        <Animated.View
+          style={{
+            width: 20,
+            height: 50,
+            backgroundColor: "#4A4A4A",
+            borderRadius: 2,
+            opacity: candleOpacity4,
+            justifyContent: "flex-start",
+            paddingTop: 3,
+          }}
+        >
+          <View style={{ width: 2, height: 20, backgroundColor: "#888", alignSelf: "center" }} />
+        </Animated.View>
+
+        {/* Candle 5 - Gold */}
+        <Animated.View
+          style={{
+            width: 20,
+            height: 60,
+            backgroundColor: "#D4A574",
+            borderRadius: 2,
+            opacity: candleOpacity5,
+            justifyContent: "flex-start",
+            paddingTop: 3,
+          }}
+        >
+          <View style={{ width: 2, height: 24, backgroundColor: "#888", alignSelf: "center" }} />
+        </Animated.View>
+
+        {/* Arrow */}
+        <Animated.Text
+          style={{
+            position: "absolute",
+            right: -30,
+            fontSize: 32,
+            color: "#D4A574",
+            fontWeight: "800",
+            opacity: arrowOpacity,
+            transform: [{ scale: arrowScale }],
+          }}
+        >
+          ↗
+        </Animated.Text>
+      </View>
+
+      {/* FREEZ Text */}
+      <Animated.Text
+        style={{
+          fontSize: 40,
+          fontWeight: "800",
+          color: "#FFFFFF",
+          letterSpacing: 8,
+          opacity: textOpacity,
+          marginBottom: 8,
+        }}
+      >
+        FREEZ
       </Animated.Text>
+
+      {/* Z with gold color */}
+      <View style={{ position: "absolute", top: "45%", right: "35%" }}>
+        <Animated.Text
+          style={{
+            fontSize: 40,
+            fontWeight: "800",
+            color: "#D4A574",
+            opacity: textOpacity,
+          }}
+        >
+          Z
+        </Animated.Text>
+      </View>
 
       {/* Subtext */}
       <Animated.Text
         style={{
-          position: "absolute",
-          fontSize: 11,
+          fontSize: 10,
           color: "#A1A1A8",
-          letterSpacing: 8,
+          letterSpacing: 2,
           opacity: subtextOpacity,
-          marginTop: 60,
+          marginTop: 12,
         }}
       >
-        COMMAND CENTER
+        TRADE • PLAN • PROFIT
       </Animated.Text>
     </View>
   );
@@ -175,8 +266,6 @@ function AuthGate() {
   const segments = useSegments();
   const router = useRouter();
 
-  // Login gate removed — app is accessible without sign-in. If somebody lands on
-  // /login by accident (legacy link), bounce them straight to the dashboard.
   useEffect(() => {
     if (loading) return;
     if (segments[0] === "login") {
