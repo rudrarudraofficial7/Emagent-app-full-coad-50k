@@ -7,15 +7,17 @@
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "icon": "./assets/images/icon.png",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rudra.freezai"
+      "bundleIdentifier": "com.rudra.freezai",
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "package": "com.rudra.freezai",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#050505"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
@@ -31,15 +33,7 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-image.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF"
-        }
-      ]
+      "expo-splash-screen"
     ],
     "experiments": {
       "typedRoutes": true
