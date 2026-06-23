@@ -1,507 +1,448 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  SectionList,
-  StyleSheet,
-  Animated,
-  Dimensions,
-  SafeAreaView,
-  Modal,
-  StatusBar,
-  Image,
+  View, Text, StyleSheet, TouchableOpacity, FlatList,
+  TextInput, Modal, Animated, Dimensions, StatusBar,
+  SafeAreaView, ScrollView, Platform
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
+import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const COLORS = {
-  bg: '#050505',
-  surface: '#121214',
-  brand: '#00E5FF',
-  text: '#FFFFFF',
-  textMuted: '#A1A1A8',
-  border: '#1E1E24',
-  green: '#00FF66',
-  red: '#FF4444',
+  bg: '#050505', surface: '#0d0d0f', card: '#121214',
+  brand: '#00E5FF', brandDim: 'rgba(0,229,255,0.12)',
+  green: '#00FF66', red: '#FF4444',
+  text: '#FFFFFF', textMuted: '#A1A1A8', textDim: 'rgba(255,255,255,0.35)',
+  border: 'rgba(255,255,255,0.06)', borderBrand: 'rgba(0,229,255,0.2)',
 };
 
-interface WatchlistItem {
-  id: string;
-  symbol: string;
-  fullName: string;
-  price: number;
-  change: number;
-  changePercent: number;
-}
-
-interface WatchlistSection {
-  title: string;
-  data: WatchlistItem[];
-  collapsed?: boolean;
-}
-
-const INITIAL_SECTIONS: WatchlistSection[] = [
-  {
-    title: 'MY WATCHLIST',
-    data: [
-      { id: '1', symbol: 'XAUUSD', fullName: 'Gold/USD', price: 2345.50, change: 15.25, changePercent: 0.66 },
-      { id: '2', symbol: 'NAS100', fullName: 'Nasdaq 100', price: 18234.75, change: -45.50, changePercent: -0.25 },
-      { id: '3', symbol: 'USOIL', fullName: 'Crude Oil', price: 78.45, change: 2.15, changePercent: 2.81 },
-      { id: '4', symbol: 'MNQ1!', fullName: 'Micro Nasdaq', price: 18250.25, change: -30.75, changePercent: -0.17 },
-      { id: '5', symbol: 'US30', fullName: 'US 30', price: 40125.50, change: 125.50, changePercent: 0.31 },
-    ],
-    collapsed: false,
-  },
-  {
-    title: 'FOREX',
-    data: [
-      { id: '6', symbol: 'GBPUSD', fullName: 'GBP/USD', price: 1.2745, change: 0.0025, changePercent: 0.20 },
-      { id: '7', symbol: 'EURUSD', fullName: 'EUR/USD', price: 1.0950, change: -0.0035, changePercent: -0.32 },
-      { id: '8', symbol: 'USDJPY', fullName: 'USD/JPY', price: 149.85, change: 0.45, changePercent: 0.30 },
-      { id: '9', symbol: 'GBPJPY', fullName: 'GBP/JPY', price: 191.25, change: -1.75, changePercent: -0.91 },
-      { id: '10', symbol: 'USDCAD', fullName: 'USD/CAD', price: 1.3625, change: 0.0015, changePercent: 0.11 },
-      { id: '11', symbol: 'USDCHF', fullName: 'USD/CHF', price: 0.8845, change: -0.0020, changePercent: -0.23 },
-    ],
-    collapsed: false,
-  },
-  {
-    title: 'CRYPTO',
-    data: [
-      { id: '12', symbol: 'BTCUSD', fullName: 'Bitcoin/USD', price: 67850.00, change: 1250.00, changePercent: 1.87 },
-      { id: '13', symbol: 'ETHUSD', fullName: 'Ethereum/USD', price: 3456.75, change: -85.50, changePercent: -2.41 },
-    ],
-    collapsed: false,
-  },
+const CATEGORIES = [
+  { id: 'all',         label: 'All',         color: '#94a3b8' },
+  { id: 'crypto',      label: 'Crypto',      color: '#f7931a' },
+  { id: 'forex',       label: 'Forex',       color: '#00E5FF' },
+  { id: 'indices',     label: 'Indices',     color: '#e74c3c' },
+  { id: 'commodities', label: 'Commodities', color: '#f1c40f' },
+  { id: 'stocks',      label: 'Stocks',      color: '#9b59b6' },
 ];
 
-const TradingViewChart = ({ symbol }: { symbol: string }) => {
-  const htmlContent = `<!DOCTYPE html>
+const SYMBOLS = [
+  // CRYPTO
+  { base:'BTCUSD',  name:'Bitcoin / USD',        category:'crypto',      feed:'BTCUSD' },
+  { base:'ETHUSD',  name:'Ethereum / USD',        category:'crypto',      feed:'ETHUSD' },
+  { base:'BNBUSD',  name:'BNB / USD',             category:'crypto',      feed:'BNBUSD' },
+  { base:'SOLUSD',  name:'Solana / USD',          category:'crypto',      feed:'SOLUSD' },
+  { base:'XRPUSD',  name:'XRP / USD',             category:'crypto',      feed:'XRPUSD' },
+  { base:'ADAUSD',  name:'Cardano / USD',         category:'crypto',      feed:'ADAUSD' },
+  { base:'DOGEUSD', name:'Dogecoin / USD',        category:'crypto',      feed:'DOGEUSD' },
+  { base:'TONUSD',  name:'Toncoin / USD',         category:'crypto',      feed:'TONUSD' },
+  // FOREX
+  { base:'EURUSD',  name:'Euro / US Dollar',      category:'forex',       feed:'FX:EURUSD' },
+  { base:'GBPUSD',  name:'British Pound / USD',   category:'forex',       feed:'FX:GBPUSD' },
+  { base:'USDJPY',  name:'USD / Japanese Yen',    category:'forex',       feed:'FX:USDJPY' },
+  { base:'USDCHF',  name:'USD / Swiss Franc',     category:'forex',       feed:'FX:USDCHF' },
+  { base:'USDCAD',  name:'USD / Canadian Dollar', category:'forex',       feed:'FX:USDCAD' },
+  { base:'AUDUSD',  name:'Australian / USD',      category:'forex',       feed:'FX:AUDUSD' },
+  { base:'NZDUSD',  name:'New Zealand / USD',     category:'forex',       feed:'FX:NZDUSD' },
+  { base:'EURJPY',  name:'Euro / Japanese Yen',   category:'forex',       feed:'FX:EURJPY' },
+  { base:'GBPJPY',  name:'GBP / Japanese Yen',   category:'forex',       feed:'FX:GBPJPY' },
+  { base:'EURGBP',  name:'Euro / British Pound',  category:'forex',       feed:'FX:EURGBP' },
+  // INDICES
+  { base:'NAS100',  name:'NASDAQ 100',            category:'indices',     feed:'NASDAQ:NDX' },
+  { base:'SPX500',  name:'S&P 500',               category:'indices',     feed:'SP:SPX' },
+  { base:'US30',    name:'Dow Jones',             category:'indices',     feed:'TVC:DJI' },
+  { base:'MNQ1!',   name:'Micro NQ Futures',      category:'indices',     feed:'CME_MINI:MNQ1!' },
+  { base:'ES1!',    name:'S&P Futures',           category:'indices',     feed:'CME_MINI:ES1!' },
+  { base:'UK100',   name:'FTSE 100',              category:'indices',     feed:'TVC:UKX' },
+  { base:'GER40',   name:'DAX 40',               category:'indices',     feed:'XETR:DAX' },
+  // COMMODITIES
+  { base:'XAUUSD',  name:'Gold / US Dollar',      category:'commodities', feed:'TVC:GOLD' },
+  { base:'XAGUSD',  name:'Silver / US Dollar',    category:'commodities', feed:'TVC:SILVER' },
+  { base:'USOIL',   name:'Crude Oil WTI',         category:'commodities', feed:'NYMEX:CL1!' },
+  { base:'UKOIL',   name:'Brent Crude',           category:'commodities', feed:'TVC:UKOIL' },
+  { base:'NATGAS',  name:'Natural Gas',           category:'commodities', feed:'NYMEX:NG1!' },
+  // STOCKS
+  { base:'AAPL',    name:'Apple Inc.',            category:'stocks',      feed:'NASDAQ:AAPL' },
+  { base:'MSFT',    name:'Microsoft',             category:'stocks',      feed:'NASDAQ:MSFT' },
+  { base:'NVDA',    name:'NVIDIA',               category:'stocks',      feed:'NASDAQ:NVDA' },
+  { base:'TSLA',    name:'Tesla Inc.',            category:'stocks',      feed:'NASDAQ:TSLA' },
+  { base:'GOOGL',   name:'Alphabet Inc.',         category:'stocks',      feed:'NASDAQ:GOOGL' },
+  { base:'AMZN',    name:'Amazon',               category:'stocks',      feed:'NASDAQ:AMZN' },
+  { base:'META',    name:'Meta Platforms',        category:'stocks',      feed:'NASDAQ:META' },
+];
+
+const SYMBOL_MAP = Object.fromEntries(SYMBOLS.map(s => [s.base, s]));
+
+const DEFAULT_WATCHLIST = ['XAUUSD','NAS100','MNQ1!','BTCUSD','ETHUSD','EURUSD','GBPUSD','USDJPY'];
+
+function randPrice(base: string) {
+  let h = 0;
+  for (let i = 0; i < base.length; i++) h = (h * 31 + base.charCodeAt(i)) >>> 0;
+  const r = (h % 1000) / 1000;
+  const map: Record<string,number> = {
+    EURUSD:1.08+r*0.04, GBPUSD:1.27+r*0.05, USDJPY:150+r*8,
+    USDCHF:0.88+r*0.04, USDCAD:1.36+r*0.05, AUDUSD:0.66+r*0.04,
+    NZDUSD:0.60+r*0.03, EURJPY:162+r*8, GBPJPY:192+r*12, EURGBP:0.85+r*0.02,
+  };
+  let p = map[base] ?? (
+    base.startsWith('BTC') ? 104000+r*2000 :
+    base.startsWith('ETH') ? 3800+r*200 :
+    base.startsWith('SOL') ? 170+r*20 :
+    base.startsWith('XAU') ? 4200+r*60 :
+    base.startsWith('XAG') ? 33+r*2 :
+    base.startsWith('NAS')||base==='MNQ1!' ? 22000+r*300 :
+    base.startsWith('SPX')||base==='ES1!' ? 5900+r*80 :
+    base.startsWith('US30') ? 42500+r*300 :
+    base==='USOIL'||base==='UKOIL' ? 72+r*6 :
+    base==='NATGAS' ? 3.5+r*0.5 :
+    base==='AAPL' ? 225+r*10 :
+    base==='NVDA' ? 135+r*10 :
+    base==='TSLA' ? 280+r*20 : 50+r*100
+  );
+  const pct = (r - 0.5) * 3;
+  return { price: +p.toFixed(p>100?2:5), pct: +pct.toFixed(2) };
+}
+
+function fmtPrice(p: number) {
+  if (!p) return '—';
+  if (p > 10000) return p.toLocaleString('en', { maximumFractionDigits: 0 });
+  if (p > 100)   return p.toFixed(2);
+  if (p > 10)    return p.toFixed(3);
+  return p.toFixed(5);
+}
+
+function getTVHtml(feed: string) {
+  return `<!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#050505; overflow:hidden; }
-#tv_chart { width:100vw; height:100vh; }
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#050505;overflow:hidden}
+#tv{width:100%;height:100%}
+.tradingview-widget-container{width:100%!important;height:100%!important}
 </style>
 </head>
 <body>
-<div id="tv_chart"></div>
-<script src="https://s3.tradingview.com/tv.js"><\/script>
-<script>
-new TradingView.widget({
-  autosize: true,
-  symbol: "${symbol}",
-  interval: "15",
-  timezone: "Asia/Kolkata",
-  theme: "dark",
-  style: "1",
-  locale: "en",
-  toolbar_bg: "#050505",
-  enable_publishing: false,
-  withdateranges: true,
-  hide_side_toolbar: false,
-  allow_symbol_change: true,
-  save_image: false,
-  container_id: "tv_chart"
-});
-<\/script>
+<div class="tradingview-widget-container" style="height:100vh;width:100%">
+  <div id="tv" style="height:100%;width:100%"></div>
+  <script src="https://s3.tradingview.com/tv.js"></script>
+  <script>
+  new TradingView.widget({
+    autosize: true,
+    symbol: "${feed}",
+    interval: "15",
+    timezone: "Asia/Kolkata",
+    theme: "dark",
+    style: "1",
+    locale: "en",
+    backgroundColor: "#050505",
+    gridColor: "rgba(0,229,255,0.04)",
+    withdateranges: true,
+    hide_side_toolbar: false,
+    allow_symbol_change: true,
+    save_image: false,
+    container_id: "tv"
+  });
+  </script>
+</div>
 </body>
 </html>`;
-
-  return (
-    <WebView
-      source={{ html: htmlContent }}
-      javaScriptEnabled={true}
-      domStorageEnabled={true}
-      originWhitelist={['*']}
-      style={StyleSheet.absoluteFill}
-    />
-  );
-};
-
-const ChartOverlay = ({
-  symbol,
-  onBack,
-  onRotate,
-}: {
-  symbol: string;
-  onBack: () => void;
-  onRotate: () => void;
-}) => {
-  const insets = useSafeAreaInsets();
-
-  return (
-    <View
-      style={[
-        styles.chartOverlay,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-      pointerEvents="box-none"
-    >
-      {/* Top Bar */}
-      <View style={styles.chartTopBar}>
-        <TouchableOpacity onPress={onBack} style={styles.overlayButton}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-
-        <Text style={styles.symbolDisplay}>{symbol}</Text>
-
-        <TouchableOpacity onPress={onRotate} style={styles.overlayButton}>
-          <Ionicons name="phone-portrait" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-};
-
-const WatchlistRow = ({
-  item,
-  onPress,
-}: {
-  item: WatchlistItem;
-  onPress: () => void;
-}) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.timing(scaleAnim, {
-      toValue: 0.98,
-      duration: 150,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.timing(scaleAnim, {
-      toValue: 1,
-      duration: 150,
-      useNativeDriver: true,
-    }).start();
-    onPress();
-  };
-
-  const changeColor = item.change >= 0 ? COLORS.green : COLORS.red;
-  const changeSign = item.change >= 0 ? '+' : '';
-
-  return (
-    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }]}>
-      <TouchableOpacity
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={1}
-        style={styles.watchlistRow}
-      >
-        <View style={styles.rowLeft}>
-          <Text style={styles.rowSymbol}>{item.symbol}</Text>
-          <Text style={styles.rowFullName}>{item.fullName}</Text>
-        </View>
-
-        <View style={styles.rowRight}>
-          <Text style={styles.rowPrice}>{item.price.toFixed(2)}</Text>
-          <Text style={[styles.rowChange, { color: changeColor }]}>
-            {changeSign}{item.change.toFixed(2)} ({changeSign}
-            {item.changePercent.toFixed(2)}%)
-          </Text>
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
-const SectionHeader = ({
-  title,
-  collapsed,
-  onPress,
-}: {
-  title: string;
-  collapsed: boolean;
-  onPress: () => void;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={styles.sectionHeader}
-    activeOpacity={0.7}
-  >
-    <Ionicons
-      name={collapsed ? 'chevron-forward' : 'chevron-down'}
-      size={20}
-      color={COLORS.brand}
-    />
-    <Text style={styles.sectionHeaderText}>{title}</Text>
-  </TouchableOpacity>
-);
+}
 
 export default function MarketsScreen() {
   const insets = useSafeAreaInsets();
-  const [sections, setSections] = useState<WatchlistSection[]>(INITIAL_SECTIONS);
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_WATCHLIST);
+  const [tab, setTab]             = useState('all');
+  const [chartSymbol, setChartSymbol] = useState<typeof SYMBOLS[0] | null>(null);
   const [isLandscape, setIsLandscape] = useState(false);
-  const slideAnim = useRef(new Animated.Value(Dimensions.get('window').height))
-    .current;
+  const [searchOpen, setSearchOpen]   = useState(false);
+  const [query, setQuery]             = useState('');
+  const [prices, setPrices]           = useState<Record<string,{price:number,pct:number,flash:string|null}>>(() => {
+    const init: Record<string,any> = {};
+    SYMBOLS.forEach(s => { init[s.base] = { ...randPrice(s.base), flash: null }; });
+    return init;
+  });
 
+  // Live price ticker
   useEffect(() => {
-    if (selectedSymbol) {
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(slideAnim, {
-        toValue: Dimensions.get('window').height,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [selectedSymbol, slideAnim]);
+    const t = setInterval(() => {
+      setPrices(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(k => {
+          const cur = next[k];
+          const drift = (Math.random() - 0.49) * cur.price * 0.0006;
+          next[k] = {
+            price: +(cur.price + drift).toFixed(cur.price > 100 ? 2 : 5),
+            pct: +(cur.pct * 0.95 + (drift / cur.price) * 100).toFixed(2),
+            flash: drift >= 0 ? 'up' : 'down',
+          };
+        });
+        return next;
+      });
+      setTimeout(() => setPrices(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(k => { next[k] = { ...next[k], flash: null }; });
+        return next;
+      }), 400);
+    }, 2000);
+    return () => clearInterval(t);
+  }, []);
 
-  const handleSymbolSelect = (symbol: string) => {
-    setSelectedSymbol(symbol);
-  };
-
-  const handleBackFromChart = async () => {
-    setSelectedSymbol(null);
-    setIsLandscape(false);
-    await ScreenOrientation.lockAsync(
-      ScreenOrientation.OrientationLock.PORTRAIT_UP
-    );
-  };
-
-  const handleRotate = async () => {
+  const toggleRotate = async () => {
     if (isLandscape) {
-      await ScreenOrientation.lockAsync(
-        ScreenOrientation.OrientationLock.PORTRAIT_UP
-      );
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       setIsLandscape(false);
     } else {
-      await ScreenOrientation.lockAsync(
-        ScreenOrientation.OrientationLock.LANDSCAPE_LEFT
-      );
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
       setIsLandscape(true);
     }
   };
 
-  const handleToggleSection = (index: number) => {
-    const newSections = [...sections];
-    newSections[index].collapsed = !newSections[index].collapsed;
-    setSections(newSections);
+  const closeChart = async () => {
+    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    setIsLandscape(false);
+    setChartSymbol(null);
   };
 
-  const filterSections = sections.map((section) => ({
-    ...section,
-    data: section.collapsed ? [] : section.data,
-  }));
+  const listData = useMemo(() => {
+    if (tab === 'all') return watchlist.map(b => SYMBOL_MAP[b]).filter(Boolean);
+    return watchlist.map(b => SYMBOL_MAP[b]).filter(s => s && s.category === tab);
+  }, [watchlist, tab]);
+
+  const searchResults = useMemo(() => {
+    const q = query.toLowerCase();
+    return SYMBOLS.filter(s =>
+      s.base.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+    );
+  }, [query]);
+
+  const catColor = (cat: string) => CATEGORIES.find(c => c.id === cat)?.color ?? '#94a3b8';
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={{ flex:1, backgroundColor: COLORS.bg }}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
 
-      {/* Watchlist View */}
-      <View style={styles.watchlistContainer}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Markets</Text>
-          <TouchableOpacity style={styles.addButton}>
-            <Ionicons name="add-circle" size={28} color={COLORS.brand} />
+      {/* ====== CHART MODAL ====== */}
+      {chartSymbol && (
+        <View style={StyleSheet.absoluteFill}>
+          {/* Top bar */}
+          <View style={{ position:'absolute',top:0,left:0,right:0,zIndex:10,
+            flexDirection:'row',alignItems:'center',gap:10,
+            paddingTop: insets.top + 8, paddingBottom:10, paddingHorizontal:14,
+            backgroundColor:'rgba(5,5,5,0.95)',
+            borderBottomWidth:1, borderBottomColor: COLORS.borderBrand }}>
+            <TouchableOpacity onPress={closeChart}
+              style={{ backgroundColor: COLORS.brandDim, borderRadius:8, borderWidth:1,
+                borderColor: COLORS.borderBrand, paddingHorizontal:12, paddingVertical:6 }}>
+              <Text style={{ color: COLORS.brand, fontWeight:'700', fontSize:13 }}>← Back</Text>
+            </TouchableOpacity>
+            <View style={{ flex:1 }}>
+              <Text style={{ color: COLORS.brand, fontWeight:'800', fontSize:15, letterSpacing:1 }}>
+                {chartSymbol.base}
+              </Text>
+              <Text style={{ color: COLORS.textMuted, fontSize:10 }}>{chartSymbol.name}</Text>
+            </View>
+            {prices[chartSymbol.base] && (
+              <View style={{ alignItems:'flex-end' }}>
+                <Text style={{ color: COLORS.text, fontWeight:'700', fontSize:15 }}>
+                  {fmtPrice(prices[chartSymbol.base].price)}
+                </Text>
+                <Text style={{ color: prices[chartSymbol.base].pct >= 0 ? COLORS.green : COLORS.red, fontSize:11 }}>
+                  {prices[chartSymbol.base].pct >= 0 ? '+' : ''}{prices[chartSymbol.base].pct.toFixed(2)}%
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity onPress={toggleRotate}
+              style={{ backgroundColor: COLORS.brandDim, borderRadius:8, borderWidth:1,
+                borderColor: COLORS.borderBrand, padding:8 }}>
+              <Ionicons name={isLandscape ? 'phone-portrait' : 'phone-landscape'} size={18} color={COLORS.brand} />
+            </TouchableOpacity>
+          </View>
+
+          {/* WebView */}
+          <WebView
+            source={{ html: getTVHtml(chartSymbol.feed) }}
+            style={{ flex:1, marginTop: insets.top + 54, backgroundColor: COLORS.bg }}
+            javaScriptEnabled originWhitelist={['*']} domStorageEnabled
+            allowFileAccess allowUniversalAccessFromFileURLs
+            mixedContentMode="always"
+            startInLoadingState
+          />
+        </View>
+      )}
+
+      {/* ====== MAIN WATCHLIST ====== */}
+      {!chartSymbol && (
+        <View style={{ flex:1 }}>
+          {/* Header */}
+          <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between',
+            paddingTop: insets.top + 12, paddingBottom:10, paddingHorizontal:20 }}>
+            <View style={{ flexDirection:'row', alignItems:'center', gap:10 }}>
+              <View style={{ width:36, height:36, borderRadius:10,
+                backgroundColor:'#0a0a0c', borderWidth:1, borderColor:'rgba(0,229,255,0.25)',
+                alignItems:'center', justifyContent:'center' }}>
+                <Text style={{ fontSize:18 }}>⚡</Text>
+              </View>
+              <View>
+                <Text style={{ color: COLORS.brand, fontWeight:'800', fontSize:15, letterSpacing:3 }}>MARKETS</Text>
+                <View style={{ flexDirection:'row', alignItems:'center', gap:5, marginTop:1 }}>
+                  <View style={{ width:5, height:5, borderRadius:99, backgroundColor: COLORS.brand }} />
+                  <Text style={{ color: COLORS.textDim, fontSize:9, letterSpacing:3 }}>LIVE</Text>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => setSearchOpen(true)}
+              style={{ width:36, height:36, borderRadius:99, borderWidth:1,
+                borderColor:'rgba(255,255,255,0.1)', backgroundColor:'rgba(255,255,255,0.05)',
+                alignItems:'center', justifyContent:'center' }}>
+              <Ionicons name="search" size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Category tabs */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap:8, paddingHorizontal:16, paddingBottom:10 }}>
+            {CATEGORIES.map(c => {
+              const active = tab === c.id;
+              return (
+                <TouchableOpacity key={c.id} onPress={() => setTab(c.id)}
+                  style={{ paddingHorizontal:14, paddingVertical:5, borderRadius:99,
+                    borderWidth:1, borderColor: active ? c.color : 'rgba(255,255,255,0.08)',
+                    backgroundColor: active ? `${c.color}18` : 'transparent',
+                    flexDirection:'row', alignItems:'center', gap:6 }}>
+                  <View style={{ width:6, height:6, borderRadius:99, backgroundColor: c.color }} />
+                  <Text style={{ color: active ? c.color : COLORS.textDim, fontSize:11, fontWeight:'700' }}>
+                    {c.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* List header */}
+          <View style={{ flexDirection:'row', justifyContent:'space-between',
+            paddingHorizontal:20, paddingBottom:6 }}>
+            <Text style={{ color: COLORS.textDim, fontSize:10, letterSpacing:2 }}>SYMBOL</Text>
+            <Text style={{ color: COLORS.textDim, fontSize:10, letterSpacing:2 }}>{listData.length} SYMBOLS</Text>
+          </View>
+
+          {/* Symbol rows */}
+          <FlatList
+            data={listData}
+            keyExtractor={s => s.base}
+            contentContainerStyle={{ paddingBottom: 100 }}
+            renderItem={({ item: s }) => {
+              const t = prices[s.base];
+              const pos = (t?.pct ?? 0) >= 0;
+              const cc = catColor(s.category);
+              const flashBg = t?.flash === 'up' ? 'rgba(0,255,102,0.06)' :
+                              t?.flash === 'down' ? 'rgba(255,68,68,0.06)' : 'transparent';
+              return (
+                <TouchableOpacity onPress={() => setChartSymbol(s)}
+                  style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between',
+                    paddingHorizontal:20, paddingVertical:13,
+                    borderBottomWidth:1, borderBottomColor: COLORS.border,
+                    backgroundColor: flashBg }}>
+                  <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+                    <View style={{ width:38, height:38, borderRadius:9,
+                      backgroundColor:`${cc}18`, alignItems:'center', justifyContent:'center' }}>
+                      <Text style={{ color: cc, fontSize:10, fontWeight:'800' }}>
+                        {s.base.slice(0,3)}
+                      </Text>
+                    </View>
+                    <View>
+                      <Text style={{ color: COLORS.text, fontWeight:'700', fontSize:14, fontVariant:['tabular-nums'] }}>
+                        {s.base}
+                      </Text>
+                      <Text style={{ color: COLORS.textMuted, fontSize:11, marginTop:1 }}>{s.name}</Text>
+                    </View>
+                  </View>
+                  <View style={{ alignItems:'flex-end' }}>
+                    <Text style={{ color: COLORS.text, fontWeight:'600', fontSize:14, fontVariant:['tabular-nums'] }}>
+                      {fmtPrice(t?.price)}
+                    </Text>
+                    <Text style={{ color: pos ? COLORS.green : COLORS.red, fontSize:11, marginTop:1, fontVariant:['tabular-nums'] }}>
+                      {pos ? '+' : ''}{t?.pct?.toFixed(2)}%
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+
+          {/* FAB */}
+          <TouchableOpacity onPress={() => setSearchOpen(true)}
+            style={{ position:'absolute', bottom: insets.bottom + 90, right:20,
+              width:50, height:50, borderRadius:25,
+              backgroundColor: COLORS.brand, alignItems:'center', justifyContent:'center',
+              shadowColor: COLORS.brand, shadowOpacity:0.5, shadowRadius:12, elevation:8 }}>
+            <Ionicons name="add" size={26} color="#000" />
           </TouchableOpacity>
         </View>
+      )}
 
-        {/* Section List */}
-        <SectionList
-          sections={filterSections}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item, index, section }) => {
-            const sectionIndex = sections.findIndex(
-              (s) => s.title === section.title
-            );
-            const isCollapsed =
-              sections[sectionIndex]?.collapsed ?? false;
-
-            if (isCollapsed) return null;
-
-            return (
-              <WatchlistRow
-                item={item}
-                onPress={() => handleSymbolSelect(item.symbol)}
+      {/* ====== SEARCH MODAL ====== */}
+      <Modal visible={searchOpen} animationType="slide" transparent onRequestClose={() => setSearchOpen(false)}>
+        <View style={{ flex:1, justifyContent:'flex-end', backgroundColor:'rgba(0,0,0,0.7)' }}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setSearchOpen(false)} />
+          <View style={{ backgroundColor:'#0d0d0f', borderTopLeftRadius:20, borderTopRightRadius:20,
+            borderWidth:1, borderColor: COLORS.borderBrand, maxHeight:'85%' }}>
+            <View style={{ padding:20, borderBottomWidth:1, borderBottomColor: COLORS.border }}>
+              <View style={{ flexDirection:'row', justifyContent:'space-between', marginBottom:12 }}>
+                <Text style={{ color: COLORS.brand, fontWeight:'800', letterSpacing:2, fontSize:13 }}>ADD SYMBOL</Text>
+                <TouchableOpacity onPress={() => setSearchOpen(false)}>
+                  <Text style={{ color: COLORS.textMuted, fontSize:18 }}>×</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                value={query} onChangeText={setQuery} placeholder="Search symbol..."
+                placeholderTextColor={COLORS.textDim} autoFocus
+                style={{ backgroundColor:'rgba(255,255,255,0.06)', borderWidth:1,
+                  borderColor: COLORS.borderBrand, borderRadius:10,
+                  padding:12, color: COLORS.text, fontSize:14 }}
               />
-            );
-          }}
-          renderSectionHeader={({ section: { title }, index }) => (
-            <SectionHeader
-              title={title}
-              collapsed={sections[index]?.collapsed ?? false}
-              onPress={() => handleToggleSection(index)}
-            />
-          )}
-          contentContainerStyle={styles.sectionListContent}
-          scrollEnabled={true}
-        />
-
-        {/* Chart Toggle Button */}
-        <TouchableOpacity
-          style={styles.chartToggleButton}
-          onPress={() => handleSymbolSelect(selectedSymbol || 'XAUUSD')}
-        >
-          <Ionicons name="stats-chart-outline" size={20} color={COLORS.text} />
-          <Text style={styles.chartToggleText}>Open Chart</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Chart Modal */}
-      {selectedSymbol && (
-        <Modal
-          visible={true}
-          animationType="none"
-          statusBarTranslucent={true}
-          onRequestClose={handleBackFromChart}
-        >
-          <View style={styles.chartContainer}>
-            <TradingViewChart symbol={selectedSymbol} />
-            <ChartOverlay
-              symbol={selectedSymbol}
-              onBack={handleBackFromChart}
-              onRotate={handleRotate}
+            </View>
+            <FlatList
+              data={searchResults.slice(0,50)}
+              keyExtractor={s => s.base}
+              renderItem={({ item: s }) => {
+                const added = watchlist.includes(s.base);
+                const cc = catColor(s.category);
+                return (
+                  <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between',
+                    paddingHorizontal:20, paddingVertical:12,
+                    borderBottomWidth:1, borderBottomColor: COLORS.border }}>
+                    <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+                      <View style={{ width:36, height:36, borderRadius:8,
+                        backgroundColor:`${cc}18`, alignItems:'center', justifyContent:'center' }}>
+                        <Text style={{ color: cc, fontSize:10, fontWeight:'800' }}>{s.base.slice(0,3)}</Text>
+                      </View>
+                      <View>
+                        <Text style={{ color: COLORS.text, fontWeight:'600', fontSize:14 }}>{s.base}</Text>
+                        <Text style={{ color: COLORS.textMuted, fontSize:11 }}>{s.name}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (added) setWatchlist(prev => prev.filter(b => b !== s.base));
+                        else setWatchlist(prev => [...prev, s.base]);
+                      }}
+                      style={{ paddingHorizontal:14, paddingVertical:6, borderRadius:20,
+                        borderWidth:1,
+                        borderColor: added ? 'rgba(255,68,68,0.4)' : COLORS.borderBrand,
+                        backgroundColor: added ? 'rgba(255,68,68,0.1)' : COLORS.brandDim }}>
+                      <Text style={{ color: added ? COLORS.red : COLORS.brand, fontSize:12, fontWeight:'700' }}>
+                        {added ? 'Remove' : '+ Add'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
             />
           </View>
-        </Modal>
-      )}
-    </SafeAreaView>
+        </View>
+      </Modal>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  watchlistContainer: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  addButton: {
-    padding: 8,
-  },
-  sectionListContent: {
-    paddingHorizontal: 12,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginTop: 8,
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-  },
-  sectionHeaderText: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.brand,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  watchlistRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginBottom: 4,
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    marginHorizontal: 4,
-    marginVertical: 2,
-  },
-  rowLeft: {
-    flex: 1,
-  },
-  rowSymbol: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  rowFullName: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-  rowRight: {
-    alignItems: 'flex-end',
-  },
-  rowPrice: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  rowChange: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  chartToggleButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 12,
-    marginBottom: 12,
-    paddingVertical: 12,
-    backgroundColor: COLORS.brand,
-    borderRadius: 8,
-    gap: 8,
-  },
-  chartToggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.bg,
-  },
-  chartContainer: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  chartOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-  },
-  chartTopBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(5, 5, 5, 0.9)',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  overlayButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(30, 30, 36, 0.8)',
-  },
-  symbolDisplay: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.brand,
-  },
-});
