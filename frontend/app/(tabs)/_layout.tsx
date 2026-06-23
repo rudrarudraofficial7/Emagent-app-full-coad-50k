@@ -46,6 +46,14 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="markets"
+        options={{
+          title: "Markets",
+          tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" color={color} size={size} />,
+          tabBarTestID: "tab-markets",
+        }}
+      />
+      <Tabs.Screen
         name="planner"
         options={{
           title: "Planner",
